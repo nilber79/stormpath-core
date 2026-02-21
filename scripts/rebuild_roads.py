@@ -81,15 +81,15 @@ def simplify_geometry(coords_lat_lon: list, tolerance: float) -> list:
 
 def fetch_overpass(cfg: dict, cache_file: Path, retries: int = 3) -> dict:
     """Fetch road data from Overpass API, with fallback to cache on failure."""
-    relation_id = cfg["county"]["osm_relation_id"]
+    relation_id = cfg["area"]["osm_relation_id"]
     area_id = relation_id + 3600000000
     road_types = "|".join(cfg["data"]["road_types"])
     overpass_url = cfg["data"]["overpass_url"]
 
     query = f"""[out:json][timeout:120];
-area({area_id})->.county;
+area({area_id})->.searcharea;
 (
-  way(area.county)["highway"~"{road_types}"]["name"];
+  way(area.searcharea)["highway"~"{road_types}"]["name"];
 );
 out body;
 >;
@@ -513,7 +513,7 @@ def write_outputs(optimized: list, merge_issues: list, osm_ts: str,
 
 def main():
     parser = argparse.ArgumentParser(description="SignalPath road data rebuild script")
-    parser.add_argument("config", help="Path to county config.yaml")
+    parser.add_argument("config", help="Path to area config.yaml")
     parser.add_argument("--output", default="build-output/data",
                         help="Output directory (default: build-output/data)")
     parser.add_argument("--cache-dir", default=None,

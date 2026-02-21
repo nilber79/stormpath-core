@@ -50,7 +50,7 @@ docker compose up -d
 **What to put in `.env`:**
 ```env
 GHCR_ORG=nilber79                         # The GitHub org that published the image
-COUNTY_TAG=morgan-tn-latest               # Which county image to run
+AREA_TAG=morgan-tn-latest               # Which area image to run
 DOMAIN=roadstatus.yourcounty.gov          # Your domain name (must point to this server)
 ```
 
@@ -80,7 +80,7 @@ curl -O https://raw.githubusercontent.com/nilber79/signalpath-core/main/deploy/.
 
 # 2. Create your local config file
 cp .env.example .env
-nano .env     # fill in GHCR_ORG and COUNTY_TAG (DOMAIN is not used here)
+nano .env     # fill in GHCR_ORG and AREA_TAG (DOMAIN is not used here)
 
 # 3. Start SignalPath
 docker compose -f docker-compose.proxy.yml up -d
@@ -149,26 +149,26 @@ A built-in admin interface for day-to-day operations:
 
 ### `/phpliteadmin.php` — Direct database access
 
-[phpLiteAdmin](https://www.phpliteadmin.org/) provides a full web-based browser
+[pla-ng](https://github.com/emanueleg/pla-ng) provides a full web-based browser
 for the SQLite database (`reports.db`). Use it when you need to run custom
 queries, inspect raw data, or make changes that the admin interface does not
 cover. The database is pre-selected automatically.
 
 ---
 
-## Available County Images
+## Available Area Images
 
-| County | Image Tag |
+| Area | Image Tag |
 |---|---|
 | Morgan County, TN | `ghcr.io/nilber79/signalpath:morgan-tn-latest` |
 
-## Adding a New County
+## Adding a New Area
 
 1. Fork this repository
-2. Copy `counties/example-county/` to `counties/your-county-slug/`
-3. Edit `config.yaml` with your county's values (see `config.schema.yaml` for all options)
-4. Push to `main` — GitHub Actions builds and publishes your county image automatically
-5. (Optional) Add your county to the table above and open a pull request
+2. Copy `areas/example-area/` to `areas/your-area-slug/`
+3. Edit `config.yaml` with your area's values (see `config.schema.yaml` for all options)
+4. Push to `main` — GitHub Actions builds and publishes your area image automatically
+5. (Optional) Add your area to the table above and open a pull request
 
 ## Architecture
 
@@ -177,7 +177,7 @@ GitHub Actions (nightly)
     │
     ├── rebuild_roads.py   → Overpass API → roads_optimized.jsonl
     ├── update_pmtiles.py  → Geofabrik PBF → <state>.pmtiles
-    └── docker build       → ghcr.io/<org>/signalpath:<county>-latest
+    └── docker build       → ghcr.io/<org>/signalpath:<area>-latest
                                 │
                         Docker container (FrankenPHP)
                                 │
@@ -190,7 +190,7 @@ GitHub Actions (nightly)
 
 **Image layers:**
 - `signalpath-core` — FrankenPHP + PHP extensions + app source (api.php, sse.php, index.html, CSS, JS)
-- `signalpath:<county>` — extends core with baked-in roads data, PMTiles, and county-config.json
+- `signalpath:<area>` — extends core with baked-in roads data, PMTiles, and area-config.json
 
 ## Data Sources
 

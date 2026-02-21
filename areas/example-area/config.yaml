@@ -1,8 +1,8 @@
-# Set to true to prevent this county from being built by GitHub Actions.
+# Set to true to prevent this area from being built by GitHub Actions.
 # Remove or set to false once you have filled in all placeholder values.
 _skip_build: true
 
-county:
+area:
   name: "Example County"
   state: "Example State"
   # OSM relation ID — find yours at https://www.openstreetmap.org/

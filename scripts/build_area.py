@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 """
-build_county.py — Run during Docker image build to inject county-specific values.
+build_area.py — Run during Docker image build to inject area-specific values.
 
 Usage:
-    python build_county.py <config.yaml> <web_root>
+    python build_area.py <config.yaml> <web_root>
 
 What it does:
-    1. Reads the county config.yaml
-    2. Writes <web_root>/county-config.json  (used by app.js at runtime)
+    1. Reads the area config.yaml
+    2. Writes <web_root>/area-config.json  (used by app.js at runtime)
     3. Patches <web_root>/index.html         (title, subtitle, contact email, etc.)
 """
 
@@ -23,8 +23,8 @@ except ImportError:
 
 
 def _full_title(cfg):
-    """SignalPath - County, State"""
-    return f"SignalPath \u2013 {cfg['county']['name']}, {cfg['county']['state']}"
+    """SignalPath - Area, State"""
+    return f"SignalPath \u2013 {cfg["area"]['name']}, {cfg["area"]['state']}"
 
 
 PLACEHOLDER_MAP = {
@@ -33,7 +33,7 @@ PLACEHOLDER_MAP = {
     "SIGNALPATH_CONTACT_EMAIL":  lambda cfg: cfg["app"]["contact_email"],
     "SIGNALPATH_OWNER_NAME":     lambda cfg: cfg["app"]["owner_name"],
     "SIGNALPATH_COPYRIGHT_YEAR": lambda cfg: str(cfg["app"]["copyright_year"]),
-    "SIGNALPATH_COUNTY_STATE":   lambda cfg: f"{cfg['county']['name']}, {cfg['county']['state']}",
+    "SIGNALPATH_AREA_NAME":   lambda cfg: f"{cfg["area"]['name']}, {cfg["area"]['state']}",
 }
 
 
@@ -52,12 +52,12 @@ def main():
     with config_path.open() as f:
         cfg = yaml.safe_load(f)
 
-    # ── 1. Write county-config.json ────────────────────────────────────────────
-    county_config = {
+    # ── 1. Write area-config.json ────────────────────────────────────────────
+    area_config = {
         # Map / geolocation
-        "center":               cfg["county"]["center"],
-        "default_zoom":         cfg["county"]["default_zoom"],
-        "proximity_radius_km":  cfg["county"]["proximity_radius_km"],
+        "center":               cfg["area"]["center"],
+        "default_zoom":         cfg["area"]["default_zoom"],
+        "proximity_radius_km":  cfg["area"]["proximity_radius_km"],
 
         # PMTiles file basename (becomes tiles/<name>.pmtiles in the container)
         "pmtiles_file":         cfg["data"]["pmtiles_area_name"],
@@ -66,13 +66,13 @@ def main():
         "title":                _full_title(cfg),
         "subtitle":             cfg["app"].get("subtitle", "Realtime, community-sourced, road status"),
         "contact_email":        cfg["app"]["contact_email"],
-        "county_name":          cfg["county"]["name"],
-        "county_state":         cfg["county"]["state"],
+        "area_name":          cfg["area"]["name"],
+        "area_state":         cfg["area"]["state"],
     }
 
-    out_json = web_root / "county-config.json"
+    out_json = web_root / "area-config.json"
     out_json.parent.mkdir(parents=True, exist_ok=True)
-    out_json.write_text(json.dumps(county_config, indent=2))
+    out_json.write_text(json.dumps(area_config, indent=2))
     print(f"✓ Wrote {out_json}")
 
     # ── 2. Patch index.html ────────────────────────────────────────────────────

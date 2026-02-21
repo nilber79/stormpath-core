@@ -15,7 +15,7 @@
 
 services:
   signalpath:
-    image: ghcr.io/${GHCR_ORG:-philreblin}/signalpath:${COUNTY_TAG:-morgan-tn-latest}
+    image: ghcr.io/${GHCR_ORG:-philreblin}/signalpath:${AREA_TAG:-morgan-tn-latest}
     restart: unless-stopped
     environment:
       SERVER_NAME: ":80"   # HTTP only — TLS handled by upstream proxy

@@ -1,4 +1,4 @@
-county:
+area:
   name: "Morgan County"
   state: "Tennessee"
   # OSM relation ID — find at https://www.openstreetmap.org/relation/<id>
@@ -6,15 +6,15 @@ county:
   osm_relation_id: 1848193
   # Map default center as [longitude, latitude]
   center: [-84.6167, 36.1167]
-  # Default zoom level (integer, typically 10–12 for a county)
+  # Default zoom level (integer, typically 10–12 for a county or small city)
   default_zoom: 11
   # Radius (km) within which a user's GPS location is considered "local";
-  # beyond this the map flies to the county center instead of the user.
+  # beyond this the map flies to the area center instead of the user.
   # 80 km ≈ 50 miles
   proximity_radius_km: 80
 
 app:
-  # title is auto-generated as "SignalPath – {county.name}, {county.state}"
+  # title is auto-generated as "SignalPath – {area.name}, {area.state}"
   subtitle: "Realtime, community-sourced, road status"
   contact_email: "moco.tn.road.status@reblin.us"
   owner_name: "Phillip Reblin"

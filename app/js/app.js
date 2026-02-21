@@ -73,7 +73,7 @@
                     showMobileNotifications: false,
                     lastChangeId: 0, // Tracks SSE delta position
                     toasts: [], // Active foreground toast notifications
-                    countyConfig: null // Loaded from /county-config.json at startup
+                    areaConfig: null // Loaded from /area-config.json at startup
                 }
             },
             computed: {
@@ -165,13 +165,13 @@
             async mounted() {
                 this.loading = true; // Show loading immediately
 
-                // Load county-specific configuration before initialising the map
+                // Load area-specific configuration before initialising the map
                 try {
-                    this.countyConfig = await fetch('/county-config.json').then(r => r.json());
+                    this.areaConfig = await fetch('/area-config.json').then(r => r.json());
                 } catch (e) {
-                    console.error('Failed to load county-config.json:', e);
+                    console.error('Failed to load area-config.json:', e);
                     // Fallback defaults so the app still runs
-                    this.countyConfig = { center: [0, 0], default_zoom: 10, proximity_radius_km: 80,
+                    this.areaConfig = { center: [0, 0], default_zoom: 10, proximity_radius_km: 80,
                                           pmtiles_file: 'map', contact_email: '' };
                 }
 
@@ -252,14 +252,14 @@
                     // Use local self-hosted PMTiles file (baked into image, updated nightly)
                     this.map = new maplibregl.Map({
                         container: 'map',
-                        center: this.countyConfig.center,
-                        zoom: this.countyConfig.default_zoom - 1,
+                        center: this.areaConfig.center,
+                        zoom: this.areaConfig.default_zoom - 1,
                         style: {
                             version: 8,
                             sources: {
                                 pmtiles: {
                                     type: "vector",
-                                    url: `pmtiles://tiles/${this.countyConfig.pmtiles_file}.pmtiles`,
+                                    url: `pmtiles://tiles/${this.areaConfig.pmtiles_file}.pmtiles`,
                                     attribution: '© <a href="https://openmaptiles.org/">OpenMapTiles</a> © <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                                 }
                             },
@@ -350,17 +350,17 @@
                                 const userLat = position.coords.latitude;
                                 const userLon = position.coords.longitude;
 
-                                // Check if user is reasonably close to the county
+                                // Check if user is reasonably close to the area
                                 const distance = this.calculateDistance(
                                     userLat, userLon,
-                                    this.countyConfig.center[1], this.countyConfig.center[0]
+                                    this.areaConfig.center[1], this.areaConfig.center[0]
                                 );
 
-                                if (distance < this.countyConfig.proximity_radius_km) {
+                                if (distance < this.areaConfig.proximity_radius_km) {
                                     this.map.flyTo({ center: [userLon, userLat], zoom: 14 });
                                 } else {
-                                    // User is far away, fly to county center
-                                    this.map.flyTo({ center: this.countyConfig.center, zoom: this.countyConfig.default_zoom });
+                                    // User is far away, fly to area center
+                                    this.map.flyTo({ center: this.areaConfig.center, zoom: this.areaConfig.default_zoom });
                                 }
 
                                 // Mark map as positioned after geolocation
@@ -390,20 +390,20 @@
                         // Force map to recalculate dimensions (fixes corner rendering issue)
                         this.map.resize();
 
-                        // Add Morgan County boundary highlight
-                        fetch('data/county_boundary_geojson.json')
+                        // Add area boundary highlight
+                        fetch('data/area_boundary_geojson.json')
                             .then(response => response.json())
                             .then(data => {
-                                this.map.addSource('county-boundary', {
+                                this.map.addSource('area-boundary', {
                                     type: 'geojson',
                                     data: data
                                 });
 
-                                // Add county boundary line (border)
+                                // Add area boundary line (border)
                                 this.map.addLayer({
-                                    id: 'county-boundary-line',
+                                    id: 'area-boundary-line',
                                     type: 'line',
-                                    source: 'county-boundary',
+                                    source: 'area-boundary',
                                     paint: {
                                         'line-color': '#f59e0b', // Orange/amber color
                                         'line-width': 3,
@@ -413,14 +413,14 @@
 
                                 // Add subtle fill
                                 this.map.addLayer({
-                                    id: 'county-boundary-fill',
+                                    id: 'area-boundary-fill',
                                     type: 'fill',
-                                    source: 'county-boundary',
+                                    source: 'area-boundary',
                                     paint: {
                                         'fill-color': '#f59e0b',
                                         'fill-opacity': 0.05
                                     }
-                                }, 'county-boundary-line'); // Place fill below the line
+                                }, 'area-boundary-line'); // Place fill below the line
                             })
                             .catch(error => {
                                 console.log('County boundary not available:', error);

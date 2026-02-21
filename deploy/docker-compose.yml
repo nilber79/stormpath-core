@@ -6,13 +6,13 @@
 #
 # Quick start:
 #   1. Copy this file and .env.example to the same directory
-#   2. cp .env.example .env  &&  nano .env   (set your DOMAIN and COUNTY_TAG)
+#   2. cp .env.example .env  &&  nano .env   (set your DOMAIN and AREA_TAG)
 #   3. docker compose up -d
 #   4. Open https://your.domain in a browser
 
 services:
   signalpath:
-    image: ghcr.io/${GHCR_ORG:-philreblin}/signalpath:${COUNTY_TAG:-morgan-tn-latest}
+    image: ghcr.io/${GHCR_ORG:-philreblin}/signalpath:${AREA_TAG:-morgan-tn-latest}
     restart: unless-stopped
     environment:
       # Set to your real domain for auto-TLS, or ":80" to serve HTTP only

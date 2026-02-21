@@ -7,13 +7,13 @@ on:
   # Allow manual trigger from the Actions tab
   workflow_dispatch:
     inputs:
-      county:
-        description: 'County slug to rebuild (leave blank for all)'
+      area:
+        description: 'Area slug to rebuild (leave blank for all)'
         required: false
         default: ''
 
 jobs:
-  # Re-use the same discovery + county build logic as build.yml
+  # Re-use the same discovery + area build logic as build.yml
   # The core image is NOT rebuilt nightly (no app code changes expected).
 
   discover:
@@ -24,23 +24,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build county matrix
+      - name: Build area matrix
         id: set
         run: |
-          if [ -n "${{ github.event.inputs.county }}" ]; then
-            slugs='["${{ github.event.inputs.county }}"]'
+          if [ -n "${{ github.event.inputs.area }}" ]; then
+            slugs='["${{ github.event.inputs.area }}"]'
           else
-            # Exclude counties whose config.yaml contains _skip_build: true
-            slugs=$(for dir in $(ls counties/); do
-              if ! grep -q '_skip_build: true' "counties/$dir/config.yaml" 2>/dev/null; then
+            # Exclude areas whose config.yaml contains _skip_build: true
+            slugs=$(for dir in $(ls areas/); do
+              if ! grep -q '_skip_build: true' "areas/$dir/config.yaml" 2>/dev/null; then
                 echo "$dir"
               fi
             done | jq -R . | jq -sc .)
           fi
-          echo "matrix={\"county\":$slugs}" >> $GITHUB_OUTPUT
+          echo "matrix={\"area\":$slugs}" >> $GITHUB_OUTPUT
 
-  county:
-    name: Refresh ${{ matrix.county }}
+  area:
+    name: Refresh ${{ matrix.area }}
     needs: discover
     runs-on: ubuntu-latest
     strategy:
@@ -63,7 +63,7 @@ jobs:
       - name: Rebuild roads (Overpass API)
         run: |
           python scripts/rebuild_roads.py \
-            counties/${{ matrix.county }}/config.yaml \
+            areas/${{ matrix.area }}/config.yaml \
             --output build-output/data/
 
       - name: Get Geofabrik Last-Modified date
@@ -71,7 +71,7 @@ jobs:
         run: |
           url=$(python -c "
           import yaml
-          cfg = yaml.safe_load(open('counties/${{ matrix.county }}/config.yaml'))
+          cfg = yaml.safe_load(open('areas/${{ matrix.area }}/config.yaml'))
           print(cfg['data']['geofabrik_url'])
           ")
           date=$(curl -sI "$url" | grep -i last-modified | sed 's/.*: //' | tr -d '\r')
@@ -82,14 +82,14 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/geofabrik-cache
-          key: geofabrik-${{ matrix.county }}-${{ steps.pbf-date.outputs.date }}
+          key: geofabrik-${{ matrix.area }}-${{ steps.pbf-date.outputs.date }}
           restore-keys: |
-            geofabrik-${{ matrix.county }}-
+            geofabrik-${{ matrix.area }}-
 
       - name: Update PMTiles
         run: |
           python scripts/update_pmtiles.py \
-            counties/${{ matrix.county }}/config.yaml \
+            areas/${{ matrix.area }}/config.yaml \
             --output build-output/tiles/ \
             --cache-dir /tmp/geofabrik-cache
 
@@ -104,16 +104,16 @@ jobs:
       - name: Derive image tag
         id: tag
         run: |
-          slug=$(echo "${{ matrix.county }}" | tr '_' '-')
+          slug=$(echo "${{ matrix.area }}" | tr '_' '-')
           echo "val=${slug}-latest" >> $GITHUB_OUTPUT
 
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: docker/Dockerfile.county
+          file: docker/Dockerfile.area
           push: true
           build-args: |
-            COUNTY=${{ matrix.county }}
+            AREA=${{ matrix.area }}
             GHCR_ORG=${{ github.repository_owner }}
           tags: ghcr.io/${{ github.repository_owner }}/signalpath:${{ steps.tag.outputs.val }}
           cache-from: type=gha

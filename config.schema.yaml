@@ -1,15 +1,15 @@
 # SignalPath County Configuration Schema
 # ─────────────────────────────────────────────────────────────────────────────
-# This file documents every key accepted by counties/<slug>/config.yaml.
-# Copy counties/example-county/config.yaml as a starting point.
+# This file documents every key accepted by areas/<slug>/config.yaml.
+# Copy areas/example-area/config.yaml as a starting point.
 
-county:
+area:
   name:                 # string  — Full county name, e.g. "Morgan County"
   state:                # string  — State/province name, e.g. "Tennessee"
   osm_relation_id:      # int     — OSM relation ID (see openstreetmap.org/relation/<id>)
                         #           Do NOT include the 3600000000 area prefix.
   center:               # [lon, lat] — Map default center, e.g. [-84.6167, 36.1167]
-  default_zoom:         # int     — Default zoom level (10–12 for a typical county)
+  default_zoom:         # int     — Default zoom level (10–12 for a typical area)
   proximity_radius_km:  # float   — GPS proximity radius; users within this distance of
                         #           center are offered geolocation flyTo. 80 ≈ 50 miles.
 

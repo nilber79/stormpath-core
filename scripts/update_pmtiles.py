@@ -171,7 +171,7 @@ def run_planetiler(pbf_path: Path, area_name: str, output_file: Path):
 
 def main():
     parser = argparse.ArgumentParser(description="SignalPath PMTiles update script")
-    parser.add_argument("config", help="Path to county config.yaml")
+    parser.add_argument("config", help="Path to area config.yaml")
     parser.add_argument("--output", default="build-output/tiles",
                         help="Output directory (default: build-output/tiles)")
     parser.add_argument("--cache-dir", default="/tmp/geofabrik-cache",
