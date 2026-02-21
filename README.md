@@ -116,6 +116,46 @@ server {
 > using the container name `signalpath` as the hostname. No port conflicts with
 > anything else running on your server.
 
+## Admin Tools
+
+SignalPath includes two password-protected admin tools for managing report data.
+Both share a single password set in your `.env` file.
+
+### Setting the admin password
+
+In your `.env` file, set:
+```env
+ADMIN_PASSWORD=your-strong-password-here
+```
+
+Then restart the container for the change to take effect:
+```bash
+docker compose restart
+```
+
+> **Important:** The default password is `changeme`. Always set a strong password
+> before your site is publicly accessible.
+
+### `/admin.php` — Report and IP list management
+
+A built-in admin interface for day-to-day operations:
+
+- **Reports tab** — View all reports from the past 30 days grouped by road.
+  Update a report's status (e.g. mark a blocked road as Clear once the hazard is
+  resolved) or delete a report outright. Status changes are pushed to connected
+  browsers in real time via Server-Sent Events.
+- **IP Lists tab** — Add or remove IP addresses from the whitelist (always
+  allowed, bypasses rate limits) or blacklist (blocked from submitting reports).
+
+### `/phpliteadmin.php` — Direct database access
+
+[phpLiteAdmin](https://www.phpliteadmin.org/) provides a full web-based browser
+for the SQLite database (`reports.db`). Use it when you need to run custom
+queries, inspect raw data, or make changes that the admin interface does not
+cover. The database is pre-selected automatically.
+
+---
+
 ## Available County Images
 
 | County | Image Tag |
