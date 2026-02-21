@@ -15,10 +15,17 @@ ARG CORE_TAG=latest
 
 FROM ghcr.io/${GHCR_ORG}/signalpath-core:${CORE_TAG}
 
-# Install Python + pyyaml for the build-time config injection step only.
-# These are NOT needed at runtime — they exist only during docker build.
-RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip \
+# Install build-time tools:
+#   python3 / pyyaml — county config injection (build_county.py)
+#   wget / unzip     — download phpLiteAdmin
+# None of these are needed at runtime.
+ARG PHPLITEADMIN_VERSION=1.9.9.1
+RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip wget unzip \
     && pip3 install pyyaml --break-system-packages \
+    && wget -q -O /tmp/pla.zip \
+        "https://github.com/phpLiteAdmin/pla/releases/download/${PHPLITEADMIN_VERSION}/phpliteadmin_v${PHPLITEADMIN_VERSION}.zip" \
+    && unzip -j /tmp/pla.zip "phpliteadmin.php" -d /app/public/ \
+    && rm /tmp/pla.zip \
     && rm -rf /var/lib/apt/lists/*
 
 # County config script

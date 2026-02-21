@@ -103,4 +103,21 @@ echo \"Schema initialised.\\n\";
     echo "[entrypoint] reports.db ready"
 fi
 
+# Configure phpLiteAdmin with the ADMIN_PASSWORD env var and the correct DB path.
+# This runs at every container start so password changes in .env take effect on restart.
+if [ -f "/app/public/phpliteadmin.php" ]; then
+    php -r "
+\$file = '/app/public/phpliteadmin.php';
+\$content = file_get_contents(\$file);
+// Set password (phpLiteAdmin 1.9.x compares sha1 of submitted password vs stored value)
+\$pass = getenv('ADMIN_PASSWORD') ?: 'changeme';
+\$hash = sha1(\$pass);
+\$content = preg_replace('/^\\\$password\s*=\s*[^\n]+;/m', '\\\$password = \\'' . \$hash . '\\';', \$content, 1);
+// Point phpLiteAdmin at the data directory where reports.db lives
+\$content = preg_replace('/^\\\$directory\s*=\s*[^\n]+;/m', '\\\$directory = \\'/app/public/data\\';', \$content, 1);
+file_put_contents(\$file, \$content);
+echo \"[entrypoint] phpLiteAdmin configured.\\n\";
+"
+fi
+
 exec "$@"

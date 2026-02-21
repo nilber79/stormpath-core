@@ -107,7 +107,8 @@ def run_planetiler(pbf_path: Path, area_name: str, output_file: Path):
         f"--osm-path=/data/{pbf_filename}",
         f"--output=/output/{output_filename}",
         f"--area={area_name}",
-        "--tmp=/tmp",   # use container's own /tmp; /data is mounted read-only
+        "--tmp=/tmp",       # use container's own /tmp; /data is mounted read-only
+        "--download",       # fetch any missing source files (lake_centerline, etc.)
         "--force",
     ]
 

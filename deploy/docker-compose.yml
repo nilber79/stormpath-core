@@ -17,6 +17,8 @@ services:
     environment:
       # Set to your real domain for auto-TLS, or ":80" to serve HTTP only
       SERVER_NAME: "${DOMAIN:-localhost}"
+      # Password for /admin.php and /phpliteadmin.php — change before going live
+      ADMIN_PASSWORD: "${ADMIN_PASSWORD:-changeme}"
     ports:
       - "80:80"
       - "443:443"
