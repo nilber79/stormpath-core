@@ -30,7 +30,12 @@ jobs:
           if [ -n "${{ github.event.inputs.county }}" ]; then
             slugs='["${{ github.event.inputs.county }}"]'
           else
-            slugs=$(ls counties/ | jq -R . | jq -sc .)
+            # Exclude counties whose config.yaml contains _skip_build: true
+            slugs=$(for dir in $(ls counties/); do
+              if ! grep -q '_skip_build: true' "counties/$dir/config.yaml" 2>/dev/null; then
+                echo "$dir"
+              fi
+            done | jq -R . | jq -sc .)
           fi
           echo "matrix={\"county\":$slugs}" >> $GITHUB_OUTPUT
 
