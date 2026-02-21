@@ -1,4 +1,4 @@
-# SignalPath
+<img src="logo.svg" width="128" />
 
 A self-hostable, community-driven road condition reporting application for counties and municipalities. Report blocked roads, snow/ice conditions, and other hazards — and see what your neighbours are reporting in real time.
 
