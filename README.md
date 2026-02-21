@@ -12,10 +12,34 @@ SignalPath: A community-sourced situational awareness tool for real-time road st
 - Nightly automatic road data refresh from OpenStreetMap
 - Self-contained Docker deployment (no external database server)
 
-## Deployment
+---
 
-SignalPath runs as a single Docker container. There are two deployment scenarios —
-choose the one that matches your situation.
+## Step 1 — Publish Your Area Image
+
+Before you can deploy SignalPath, you need to publish a Docker image configured
+for your specific area (county, city, township, etc.). GitHub Actions does this
+automatically — you just need to provide a config file.
+
+1. **Fork this repository** on GitHub
+2. **Copy** `areas/example-area/` to `areas/your-area-slug/`
+   (e.g. `areas/morgan-county-tn/` — use lowercase letters and hyphens)
+3. **Edit** `areas/your-area-slug/config.yaml` with your area's values
+   (see `config.schema.yaml` for all options)
+4. **Push to `main`** — GitHub Actions builds and publishes your image automatically
+5. **Wait** about 10–15 minutes for the first build to finish
+6. Your image will be available at:
+   `ghcr.io/<your-github-username>/signalpath:<your-area-slug>-latest`
+
+> **Note:** GitHub Actions publishes images to the GitHub Container Registry (GHCR)
+> associated with your GitHub account. The image is public by default and can be
+> pulled by any Docker host without authentication.
+
+---
+
+## Step 2 — Deploy
+
+Once your image is published, deploy it on your server.
+SignalPath runs as a single Docker container — no external database server required.
 
 ### Which scenario am I?
 
@@ -41,7 +65,7 @@ curl -O https://raw.githubusercontent.com/nilber79/signalpath-core/main/deploy/.
 
 # 2. Create your local config file
 cp .env.example .env
-nano .env     # fill in the three values (see below)
+nano .env     # fill in your values (see below)
 
 # 3. Start SignalPath
 docker compose up -d
@@ -49,9 +73,10 @@ docker compose up -d
 
 **What to put in `.env`:**
 ```env
-GHCR_ORG=nilber79                         # The GitHub org that published the image
-AREA_TAG=morgan-tn-latest               # Which area image to run
-DOMAIN=roadstatus.yourcounty.gov          # Your domain name (must point to this server)
+GHCR_ORG=your-github-username            # Your GitHub username (the fork owner)
+AREA_TAG=your-area-slug-latest           # Your area slug + "-latest"
+DOMAIN=roadstatus.yourcounty.gov         # Your domain name (must point to this server)
+ADMIN_PASSWORD=your-strong-password-here # Password for /admin.php and /phpliteadmin.php
 ```
 
 SignalPath will be live at `https://your.domain` within a minute or two.
@@ -80,7 +105,7 @@ curl -O https://raw.githubusercontent.com/nilber79/signalpath-core/main/deploy/.
 
 # 2. Create your local config file
 cp .env.example .env
-nano .env     # fill in GHCR_ORG and AREA_TAG (DOMAIN is not used here)
+nano .env     # fill in GHCR_ORG, AREA_TAG, and ADMIN_PASSWORD (DOMAIN is not used here)
 
 # 3. Start SignalPath
 docker compose -f docker-compose.proxy.yml up -d
@@ -116,25 +141,18 @@ server {
 > using the container name `signalpath` as the hostname. No port conflicts with
 > anything else running on your server.
 
+---
+
 ## Admin Tools
 
 SignalPath includes two password-protected admin tools for managing report data.
-Both share a single password set in your `.env` file.
-
-### Setting the admin password
-
-In your `.env` file, set:
-```env
-ADMIN_PASSWORD=your-strong-password-here
-```
-
-Then restart the container for the change to take effect:
-```bash
-docker compose restart
-```
+Both share the `ADMIN_PASSWORD` you set in your `.env` file.
 
 > **Important:** The default password is `changeme`. Always set a strong password
-> before your site is publicly accessible.
+> before your site is publicly accessible. Restart the container after changing it:
+> ```bash
+> docker compose restart
+> ```
 
 ### `/admin.php` — Report and IP list management
 
@@ -161,14 +179,6 @@ cover. The database is pre-selected automatically.
 | Area | Image Tag |
 |---|---|
 | Morgan County, TN | `ghcr.io/nilber79/signalpath:morgan-tn-latest` |
-
-## Adding a New Area
-
-1. Fork this repository
-2. Copy `areas/example-area/` to `areas/your-area-slug/`
-3. Edit `config.yaml` with your area's values (see `config.schema.yaml` for all options)
-4. Push to `main` — GitHub Actions builds and publishes your area image automatically
-5. (Optional) Add your area to the table above and open a pull request
 
 ## Architecture
 
