@@ -86,8 +86,6 @@ def download_pbf(url: str, dest: Path, cache_file: Path) -> Path:
 
 def run_planetiler(pbf_path: Path, area_name: str, output_file: Path):
     """Run the Planetiler Docker image to convert PBF → PMTiles."""
-    import tempfile
-
     pbf_dir    = pbf_path.parent.resolve()     # read-only PBF cache location
     output_dir = output_file.parent.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -98,30 +96,33 @@ def run_planetiler(pbf_path: Path, area_name: str, output_file: Path):
     log("Converting PBF to PMTiles via Planetiler (this may take 2–10 minutes)...")
 
     # Planetiler writes downloaded source files (lake_centerline, etc.) to /data/sources
-    # and intermediate work to /data/tmp.  We give it a fresh writable temp directory
+    # and intermediate work to /data/tmp.  We give it a dedicated writable directory
     # as /data so those writes never touch the read-only PBF cache.
-    # ignore_cleanup_errors=True: Planetiler runs as root inside Docker, so the files
-    # it creates (e.g. sources/lake_centerline.shp.zip) are root-owned and can't be
-    # deleted by the non-root GitHub Actions runner.  We suppress the cleanup error
-    # and let the runner clean up the workspace at job end.
-    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as planet_workdir:
-        cmd = [
-            "docker", "run", "--rm",
-            "--label", "dockhand.notifications=false",
-            "--label", "dockhand.ignore=true",
-            "--label", "com.centurylinklabs.watchtower.enable=false",
-            "-v", f"{pbf_dir}:/pbf:ro",        # PBF source file — read-only
-            "-v", f"{planet_workdir}:/data",   # Planetiler's writable working dir
-            "-v", f"{output_dir}:/output",
-            PLANETILER_IMAGE,
-            f"--osm-path=/pbf/{pbf_filename}",
-            f"--output=/output/{output_filename}",
-            f"--area={area_name}",
-            "--download",   # fetch missing sources (lake_centerline, etc.) into /data/sources
-            "--force",
-        ]
+    #
+    # We do NOT use tempfile.TemporaryDirectory because Planetiler runs as root inside
+    # Docker, creating root-owned files that the non-root Actions runner cannot delete.
+    # Instead we create a plain directory alongside the output and leave cleanup to the
+    # Actions runner (which owns the workspace and handles it at job end).
+    planet_workdir = output_dir.parent / "planetiler-workdir"
+    planet_workdir.mkdir(parents=True, exist_ok=True)
 
-        result = subprocess.run(cmd, capture_output=True, text=True)
+    cmd = [
+        "docker", "run", "--rm",
+        "--label", "dockhand.notifications=false",
+        "--label", "dockhand.ignore=true",
+        "--label", "com.centurylinklabs.watchtower.enable=false",
+        "-v", f"{pbf_dir}:/pbf:ro",                  # PBF source file — read-only
+        "-v", f"{str(planet_workdir)}:/data",         # Planetiler's writable working dir
+        "-v", f"{output_dir}:/output",
+        PLANETILER_IMAGE,
+        f"--osm-path=/pbf/{pbf_filename}",
+        f"--output=/output/{output_filename}",
+        f"--area={area_name}",
+        "--download",   # fetch missing sources (lake_centerline, etc.) into /data/sources
+        "--force",
+    ]
+
+    result = subprocess.run(cmd, capture_output=True, text=True)
 
     # Print filtered output (errors and completion messages only)
     for line in (result.stdout + result.stderr).splitlines():
