@@ -17,7 +17,7 @@ jobs:
   # The core image is NOT rebuilt nightly (no app code changes expected).
 
   discover:
-    name: Discover counties
+    name: Discover areas
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}

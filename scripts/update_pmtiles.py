@@ -176,6 +176,9 @@ def main():
                         help="Output directory (default: build-output/tiles)")
     parser.add_argument("--cache-dir", default="/tmp/geofabrik-cache",
                         help="Directory to cache the downloaded Geofabrik PBF")
+    parser.add_argument("--max-age-hours", type=float, default=20,
+                        help="Skip rebuild if the existing PMTiles file is younger than this "
+                             "many hours (default: 20). Set to 0 to always rebuild.")
     args = parser.parse_args()
 
     config_path = Path(args.config)
@@ -194,6 +197,15 @@ def main():
     pbf_name    = geofabrik_url.rsplit("/", 1)[-1]        # e.g. tennessee-latest.osm.pbf
     cache_file  = cache_dir / pbf_name
     output_file = output_dir / f"{area_name}.pmtiles"
+
+    # Skip the rebuild if the existing file is fresh enough.  This avoids
+    # re-running Planetiler when a push to main (e.g. a code or config change)
+    # triggers Actions shortly after the nightly build already ran.
+    if args.max_age_hours > 0 and output_file.exists():
+        age_hours = (time.time() - output_file.stat().st_mtime) / 3600
+        if age_hours < args.max_age_hours:
+            log(f"PMTiles file is {age_hours:.1f}h old (< {args.max_age_hours:.0f}h) — skipping rebuild")
+            sys.exit(0)
 
     log(f"PMTiles update for {area_name}")
     pbf_path = download_pbf(geofabrik_url, cache_dir, cache_file)

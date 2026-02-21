@@ -40,7 +40,7 @@ jobs:
 
   # ── Discover area directories ───────────────────────────────────────────────
   discover:
-    name: Discover counties
+    name: Discover areas
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
