@@ -1762,6 +1762,7 @@
     color: var(--color-text);
     width: 100%;
     text-align: left;
+    text-decoration: none;
 }
 
 .dropdown-action-btn:hover {
@@ -1956,6 +1957,7 @@
     font-weight: 500;
     color: var(--color-text);
     transition: all 0.2s;
+    text-decoration: none;
 }
 
 .mobile-info-btn:hover {

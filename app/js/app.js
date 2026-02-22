@@ -58,9 +58,11 @@
                     showDisclaimerModal: false,
                     showLegendDropdown: false,
                     showInfoDropdown: false,
+                    showAdminDropdown: false,
                     mobileMenuOpen: false,
                     showMobileLegend: false,
                     showMobileInfo: false,
+                    showMobileAdmin: false,
                     lastUserInteraction: 0, // Timestamp of last map interaction
                     isProcessingClick: false, // Flag to prevent rapid duplicate clicks
                     customLoadingMessage: null, // Custom message for streaming progress

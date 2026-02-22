@@ -162,6 +162,33 @@
                         </div>
                     </div>
                 </div>
+
+                <div
+                    class="nav-item"
+                    @mouseenter="showAdminDropdown = true"
+                    @mouseleave="showAdminDropdown = false"
+                >
+                    <span class="nav-link">
+                        Admin
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" style="margin-left: 4px;">
+                            <path d="M6 9L1 4h10z"/>
+                        </svg>
+                    </span>
+                    <div class="nav-dropdown" :class="{ active: showAdminDropdown }">
+                        <div class="dropdown-content">
+                            <div class="dropdown-actions">
+                                <a class="dropdown-action-btn" href="/admin.php">
+                                    <span class="dropdown-action-icon">📋</span>
+                                    <span>Report Management</span>
+                                </a>
+                                <a class="dropdown-action-btn" href="/phpliteadmin.php">
+                                    <span class="dropdown-action-icon">🗄️</span>
+                                    <span>Database</span>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </nav>
 
             <button class="hamburger-btn" @click="toggleMobileMenu" aria-label="Toggle menu">
@@ -215,6 +242,23 @@
                             <span>⚠️</span>
                             Disclaimer
                         </button>
+                    </div>
+                </div>
+                <button class="mobile-menu-item" @click="showMobileAdmin = !showMobileAdmin">
+                    <span class="mobile-menu-icon">⚙️</span>
+                    <span>Admin</span>
+                    <span class="mobile-menu-arrow" :class="{ rotated: showMobileAdmin }">▼</span>
+                </button>
+                <div class="mobile-submenu" v-if="showMobileAdmin">
+                    <div class="mobile-info-actions">
+                        <a class="mobile-info-btn" href="/admin.php">
+                            <span>📋</span>
+                            Report Management
+                        </a>
+                        <a class="mobile-info-btn" href="/phpliteadmin.php">
+                            <span>🗄️</span>
+                            Database
+                        </a>
                     </div>
                 </div>
                 <button v-if="notificationsSupported" class="mobile-menu-item" @click="toggleMobileNotifications">
