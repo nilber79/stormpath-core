@@ -11,8 +11,11 @@ FROM dunglas/frankenphp:php8.4
 # Install pdo_sqlite (required for reports.db)
 RUN install-php-extensions pdo_sqlite
 
-# Copy app source files into the FrankenPHP public root
+# Copy app source files into the FrankenPHP public root.
+# Remove the default FrankenPHP demo index.php (ships in the base image at
+# /app/public/index.php) — otherwise php_server serves it instead of index.html.
 COPY app/ /app/public/
+RUN rm -f /app/public/index.php
 
 # Caddy / FrankenPHP server configuration
 COPY docker/Caddyfile /etc/caddy/Caddyfile
