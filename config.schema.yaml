@@ -1,4 +1,4 @@
-# SignalPath County Configuration Schema
+# StormPath Area Configuration Schema
 # ─────────────────────────────────────────────────────────────────────────────
 # This file documents every key accepted by areas/<slug>/config.yaml.
 # Copy areas/example-area/config.yaml as a starting point.

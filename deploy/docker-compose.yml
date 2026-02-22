@@ -1,6 +1,6 @@
-# SignalPath — Standalone Deployment
+# StormPath — Standalone Deployment
 # ─────────────────────────────────────────────────────────────────────────────
-# This compose file is for users deploying SignalPath on a fresh server with
+# This compose file is for users deploying StormPath on a fresh server with
 # NO existing reverse proxy. FrankenPHP/Caddy handles TLS automatically via
 # Let's Encrypt when DOMAIN is set to a real hostname.
 #
@@ -11,8 +11,8 @@
 #   4. Open https://your.domain in a browser
 
 services:
-  signalpath:
-    image: ghcr.io/${GHCR_ORG:-philreblin}/signalpath:${AREA_TAG:-morgan-tn-latest}
+  stormpath:
+    image: ghcr.io/${GHCR_ORG:-philreblin}/stormpath:${AREA_TAG:-morgan-tn-latest}
     restart: unless-stopped
     environment:
       # Set to your real domain for auto-TLS, or ":80" to serve HTTP only
@@ -27,20 +27,20 @@ services:
       # Persist reports.db across image updates.
       # Roads data (roads_optimized.jsonl) is baked into the image and
       # updated automatically when the container restarts with a new image.
-      - signalpath-db:/app/public/data
+      - stormpath-db:/app/public/data
     cap_add:
       # Required by Caddy to bind to ports < 1024 on some Linux configurations
       - NET_ADMIN
 
-  # Watchtower automatically pulls and restarts SignalPath whenever a new
+  # Watchtower automatically pulls and restarts StormPath whenever a new
   # nightly image is published to GHCR — no manual update steps required.
   watchtower:
     image: nickfedor/watchtower:latest
     restart: unless-stopped
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
-    # Check for a new image every hour; only watch the signalpath container.
-    command: --interval 3600 signalpath
+    # Check for a new image every hour; only watch the stormpath container.
+    command: --interval 3600 stormpath
 
 volumes:
-  signalpath-db:
+  stormpath-db:

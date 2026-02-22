@@ -1,6 +1,6 @@
 <?php
 /**
- * SignalPath Admin Interface
+ * StormPath Admin Interface
  *
  * Accessible at /admin.php
  * Password is set via the ADMIN_PASSWORD environment variable in your .env file.
@@ -24,7 +24,7 @@ $cfg_file   = __DIR__ . '/area-config.json';
 if (file_exists($cfg_file)) {
     $area_cfg = json_decode(file_get_contents($cfg_file), true) ?? [];
 }
-$county_name  = $area_cfg['area_name']  ?? 'SignalPath';
+$county_name  = $area_cfg['area_name']  ?? 'StormPath';
 $county_state = $area_cfg['area_state'] ?? '';
 
 // ── Authentication ────────────────────────────────────────────────────────
@@ -51,7 +51,7 @@ if (empty($_SESSION['sp_admin'])) {
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Admin Login — SignalPath</title>
+        <title>Admin Login — StormPath</title>
         <link rel="icon" type="image/svg+xml" href="/favicon.svg">
         <link rel="shortcut icon" href="/favicon.ico">
         <style>
@@ -77,7 +77,7 @@ if (empty($_SESSION['sp_admin'])) {
     </head>
     <body>
         <div class="login-box">
-            <div class="login-logo">SignalPath</div>
+            <div class="login-logo">StormPath</div>
             <div class="login-sub">Admin — <?= h($county_name) ?><?= $county_state ? ', ' . h($county_state) : '' ?></div>
             <?php if (isset($login_error)): ?>
                 <div class="error"><?= h($login_error) ?></div>
@@ -224,7 +224,7 @@ function is_active(string $ts): bool {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Admin — <?= h($county_name) ?> | SignalPath</title>
+    <title>Admin — <?= h($county_name) ?> | StormPath</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg">
     <link rel="shortcut icon" href="/favicon.ico">
     <style>
@@ -561,7 +561,7 @@ function is_active(string $ts): bool {
 
 <header class="admin-header">
     <div>
-        <div class="admin-header-brand"><span>SignalPath</span> Admin</div>
+        <div class="admin-header-brand"><span>StormPath</span> Admin</div>
         <div class="admin-header-sub"><?= h($county_name) ?><?= $county_state ? ', ' . h($county_state) : '' ?></div>
     </div>
     <div class="admin-header-actions">

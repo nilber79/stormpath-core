@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 rebuild_roads.py — Fetch road data from the Overpass API and produce optimised
-JSON/JSONL output for SignalPath.
+JSON/JSONL output for StormPath.
 
 Usage:
     python rebuild_roads.py <config.yaml> [--output <dir>] [--cache-dir <dir>]
@@ -104,7 +104,7 @@ out skel qt;"""
                 overpass_url,
                 data={"data": query},
                 timeout=150,
-                headers={"User-Agent": "SignalPath/1.0 road-status-app"},
+                headers={"User-Agent": "StormPath/1.0 road-status-app"},
             )
             resp.raise_for_status()
             data = resp.json()
@@ -460,7 +460,7 @@ def write_outputs(optimized: list, merge_issues: list, osm_ts: str,
     # roads_optimized.json
     full_json = {
         "version": 0.6,
-        "generator": "SignalPath rebuild_roads.py",
+        "generator": "StormPath rebuild_roads.py",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "elements": optimized,
     }
@@ -518,7 +518,7 @@ out geom;"""
             overpass_url,
             data={"data": query},
             timeout=90,
-            headers={"User-Agent": "SignalPath/1.0 road-status-app"},
+            headers={"User-Agent": "StormPath/1.0 road-status-app"},
         )
         resp.raise_for_status()
         data = resp.json()
@@ -565,7 +565,7 @@ out geom;"""
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SignalPath road data rebuild script")
+    parser = argparse.ArgumentParser(description="StormPath road data rebuild script")
     parser.add_argument("config", help="Path to area config.yaml")
     parser.add_argument("--output", default="build-output/data",
                         help="Output directory (default: build-output/data)")

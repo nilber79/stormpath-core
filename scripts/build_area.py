@@ -23,8 +23,8 @@ except ImportError:
 
 
 def _full_title(cfg):
-    """SignalPath - Area, State"""
-    return f"SignalPath \u2013 {cfg["area"]['name']}, {cfg["area"]['state']}"
+    """StormPath - Area, State"""
+    return f"StormPath \u2013 {cfg["area"]['name']}, {cfg["area"]['state']}"
 
 
 def _github_link(cfg):
@@ -35,13 +35,13 @@ def _github_link(cfg):
 
 
 PLACEHOLDER_MAP = {
-    "SIGNALPATH_TITLE":          _full_title,
-    "SIGNALPATH_SUBTITLE":       lambda cfg: cfg["app"].get("subtitle", "Realtime, community-sourced, road status"),
-    "SIGNALPATH_CONTACT_EMAIL":  lambda cfg: cfg["app"]["contact_email"],
-    "SIGNALPATH_GITHUB_LINK":    _github_link,
-    "SIGNALPATH_OWNER_NAME":     lambda cfg: cfg["app"]["owner_name"],
-    "SIGNALPATH_COPYRIGHT_YEAR": lambda cfg: str(cfg["app"]["copyright_year"]),
-    "SIGNALPATH_AREA_NAME":      lambda cfg: f"{cfg['area']['name']}, {cfg['area']['state']}",
+    "STORMPATH_TITLE":          _full_title,
+    "STORMPATH_SUBTITLE":       lambda cfg: cfg["app"].get("subtitle", "Realtime, community-sourced, road status"),
+    "STORMPATH_CONTACT_EMAIL":  lambda cfg: cfg["app"]["contact_email"],
+    "STORMPATH_GITHUB_LINK":    _github_link,
+    "STORMPATH_OWNER_NAME":     lambda cfg: cfg["app"]["owner_name"],
+    "STORMPATH_COPYRIGHT_YEAR": lambda cfg: str(cfg["app"]["copyright_year"]),
+    "STORMPATH_AREA_NAME":      lambda cfg: f"{cfg['area']['name']}, {cfg['area']['state']}",
 }
 
 

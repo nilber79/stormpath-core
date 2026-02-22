@@ -19,7 +19,7 @@ app:
   title: "Example County Road Status"
   subtitle: "Real-time, community-based, road condition reports for Example County, Example State"
   contact_email: "your-email@example.com"
-  github_url: "https://github.com/your-username/signalpath-core"
+  github_url: "https://github.com/your-username/stormpath-core"
   owner_name: "Your Name"
   copyright_year: "2026"
 

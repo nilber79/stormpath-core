@@ -1,4 +1,4 @@
-# ── SignalPath Area Image ────────────────────────────────────────────────────
+# ── StormPath Area Image ────────────────────────────────────────────────────
 # Extends the core image with area-specific data baked in:
 #   - roads_optimized.json / roads_optimized.jsonl  (from rebuild_roads.py)
 #   - <area>.pmtiles                                (from update_pmtiles.py)
@@ -13,7 +13,7 @@
 ARG GHCR_ORG=philreblin
 ARG CORE_TAG=latest
 
-FROM ghcr.io/${GHCR_ORG}/signalpath-core:${CORE_TAG}
+FROM ghcr.io/${GHCR_ORG}/stormpath-core:${CORE_TAG}
 
 # Install build-time tools:
 #   python3 / pyyaml — area config injection (build_area.py)

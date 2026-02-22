@@ -1,6 +1,6 @@
 <img src="app/favicon.svg" width="128" />
 
-SignalPath: A community-sourced situational awareness tool for real-time road status and emergency navigation. Report blocked roads, snow/ice conditions, and other hazards — and see what your neighbors are reporting in real time.
+StormPath: A community-sourced situational awareness tool for real-time road status and emergency navigation. Report blocked roads, snow/ice conditions, and other hazards — and see what your neighbors are reporting in real time.
 
 ## Features
 
@@ -17,7 +17,7 @@ SignalPath: A community-sourced situational awareness tool for real-time road st
 
 ## Step 1 — Publish Your Area Image
 
-Before you can deploy SignalPath, you need to publish a Docker image configured
+Before you can deploy StormPath, you need to publish a Docker image configured
 for your specific area (county, city, township, etc.). GitHub Actions does this
 automatically — you just need to provide a config file.
 
@@ -29,7 +29,7 @@ automatically — you just need to provide a config file.
 4. **Push to `main`** — GitHub Actions builds and publishes your image automatically
 5. **Wait** about 10–15 minutes for the first build to finish
 6. Your image will be available at:
-   `ghcr.io/<your-github-username>/signalpath:<your-area-slug>-latest`
+   `ghcr.io/<your-github-username>/stormpath:<your-area-slug>-latest`
 
 > **Note:** GitHub Actions publishes images to the GitHub Container Registry (GHCR)
 > associated with your GitHub account. The image is public by default and can be
@@ -40,7 +40,7 @@ automatically — you just need to provide a config file.
 ## Step 2 — Deploy
 
 Once your image is published, deploy it on your server.
-SignalPath runs as a single Docker container — no external database server required.
+StormPath runs as a single Docker container — no external database server required.
 
 ### Which scenario am I?
 
@@ -87,26 +87,26 @@ ADMIN_PASSWORD=your-strong-password-here # Password for /admin.php and /phplitea
 
 ### Scenario A — Standalone (Recommended for new deployments)
 
-SignalPath handles everything itself: it serves the website, obtains a free HTTPS
+StormPath handles everything itself: it serves the website, obtains a free HTTPS
 certificate from Let's Encrypt automatically, and renews it without any extra steps.
 
 **Prerequisites:** A Linux server with Docker and Docker Compose installed,
-and a domain name pointed at your server's IP address (e.g. `signalpath.your-area.gov`).
+and a domain name pointed at your server's IP address (e.g. `roadstatus.your-area.gov`).
 
 ```bash
 # 1. Download the two config files
-curl -O https://raw.githubusercontent.com/nilber79/signalpath-core/main/deploy/docker-compose.yml
-curl -O https://raw.githubusercontent.com/nilber79/signalpath-core/main/deploy/.env.example
+curl -O https://raw.githubusercontent.com/nilber79/stormpath-core/main/deploy/docker-compose.yml
+curl -O https://raw.githubusercontent.com/nilber79/stormpath-core/main/deploy/.env.example
 
 # 2. Create your local config file
 cp .env.example .env
 nano .env
 
-# 3. Start SignalPath
+# 3. Start StormPath
 docker compose up -d
 ```
 
-SignalPath will be live at `https://your.domain` within a minute or two.
+StormPath will be live at `https://your.domain` within a minute or two.
 The HTTPS certificate is obtained and renewed automatically — you do not need to
 configure certificates or ports manually.
 
@@ -121,29 +121,29 @@ configure certificates or ports manually.
 ### Scenario B — Behind an Existing Reverse Proxy
 
 Use this if your server already runs Caddy, Nginx, Traefik, or another reverse
-proxy that handles HTTPS for all your websites. SignalPath runs as an ordinary
+proxy that handles HTTPS for all your websites. StormPath runs as an ordinary
 HTTP service on your internal Docker network; your proxy routes traffic to it
 and handles the HTTPS certificate.
 
 ```bash
 # 1. Download the proxy compose file
-curl -O https://raw.githubusercontent.com/nilber79/signalpath-core/main/deploy/docker-compose.proxy.yml
-curl -O https://raw.githubusercontent.com/nilber79/signalpath-core/main/deploy/.env.example
+curl -O https://raw.githubusercontent.com/nilber79/stormpath-core/main/deploy/docker-compose.proxy.yml
+curl -O https://raw.githubusercontent.com/nilber79/stormpath-core/main/deploy/.env.example
 
 # 2. Create your local config file
 cp .env.example .env
 nano .env
 
-# 3. Start SignalPath
+# 3. Start StormPath
 docker compose -f docker-compose.proxy.yml up -d
 ```
 
-Then add a rule to your proxy config pointing to the `signalpath` container.
+Then add a rule to your proxy config pointing to the `stormpath` container.
 
 **Caddy example** (add to your existing `Caddyfile`):
 ```caddy
-signalpath.your-area.gov {
-    reverse_proxy signalpath:80
+roadstatus.your-area.gov {
+    reverse_proxy stormpath:80
 }
 ```
 
@@ -151,11 +151,11 @@ signalpath.your-area.gov {
 ```nginx
 server {
     listen 443 ssl;
-    server_name signalpath.your-area.gov;
+    server_name roadstatus.your-area.gov;
     # ... your existing ssl_certificate lines ...
 
     location / {
-        proxy_pass http://signalpath:80;
+        proxy_pass http://stormpath:80;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
     }
@@ -164,8 +164,8 @@ server {
 
 > **How ports work (Scenario B):** The container only listens on port 80 inside
 > your server's private Docker network — this port is **never** exposed to the
-> internet. Your proxy container and the SignalPath container communicate privately
-> using the container name `signalpath` as the hostname. No port conflicts with
+> internet. Your proxy container and the StormPath container communicate privately
+> using the container name `stormpath` as the hostname. No port conflicts with
 > anything else running on your server.
 
 ---
@@ -173,7 +173,7 @@ server {
 ## Automatic Updates (Watchtower)
 
 Both compose files include **[Watchtower](https://github.com/nickfedor/watchtower)**
-(`nickfedor/watchtower`, the actively maintained fork), which monitors the SignalPath
+(`nickfedor/watchtower`, the actively maintained fork), which monitors the StormPath
 container and automatically pulls and restarts it whenever a new image is published to GHCR.
 
 This is what keeps your road and map data current: every night GitHub Actions rebuilds
@@ -181,7 +181,7 @@ the image with fresh OpenStreetMap road data and (when changed) updated PMTiles.
 checks for a new image every hour, so your site will be running the latest data within an
 hour of the nightly build completing — no manual steps required.
 
-Watchtower is configured to watch **only the `signalpath` container** (not everything on
+Watchtower is configured to watch **only the `stormpath` container** (not everything on
 your server) and will perform a graceful restart, which typically takes only a few seconds.
 
 > **Note on downtime:** When Watchtower pulls a new image and restarts the container,
@@ -199,7 +199,7 @@ docker compose pull && docker compose up -d
 
 ## Admin Tools
 
-SignalPath includes two password-protected admin tools for managing report data.
+StormPath includes two password-protected admin tools for managing report data.
 Both share the `ADMIN_PASSWORD` you set in your `.env` file.
 
 > **Important:** The default password is `changeme`. Always set a strong password
@@ -232,7 +232,7 @@ cover. The database is pre-selected automatically.
 
 | Area | Image Tag |
 |---|---|
-| Morgan County, TN | `ghcr.io/nilber79/signalpath:morgan-county-tn-latest` |
+| Morgan County, TN | `ghcr.io/nilber79/stormpath:morgan-county-tn-latest` |
 
 ## Architecture
 
@@ -241,7 +241,7 @@ GitHub Actions (nightly)
     │
     ├── rebuild_roads.py   → Overpass API → roads_optimized.jsonl
     ├── update_pmtiles.py  → Geofabrik PBF → <state>.pmtiles
-    └── docker build       → ghcr.io/<org>/signalpath:<area>-latest
+    └── docker build       → ghcr.io/<org>/stormpath:<area>-latest
                                 │
                         Docker container (FrankenPHP)
                                 │
@@ -253,8 +253,8 @@ GitHub Actions (nightly)
 ```
 
 **Image layers:**
-- `signalpath-core` — FrankenPHP + PHP extensions + app source (api.php, sse.php, index.html, CSS, JS)
-- `signalpath:<area>` — extends core with baked-in roads data, PMTiles, and area-config.json
+- `stormpath-core` — FrankenPHP + PHP extensions + app source (api.php, sse.php, index.html, CSS, JS)
+- `stormpath:<area>` — extends core with baked-in roads data, PMTiles, and area-config.json
 
 ## Data Sources
 
@@ -264,10 +264,10 @@ GitHub Actions (nightly)
 
 ## License
 
-SignalPath Source Available License v1.0 — see [LICENSE](LICENSE).
+StormPath Source Available License v1.0 — see [LICENSE](LICENSE).
 
 **Non-Commercial Use** (individuals, non-profits, government agencies for public benefit) is free.
 **Commercial Use** (SaaS, hosted services sold to third parties) requires a separate written license.
-Contact [signalpath@reblin.us](mailto:signalpath@reblin.us) for commercial licensing.
+Contact [info@stormpath.app](mailto:info@stormpath.app) for commercial licensing.
 
 Road condition data submitted by users remains the contribution of the respective submitters.

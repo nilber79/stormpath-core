@@ -1,6 +1,6 @@
 {
-  "name": "SignalPath",
-  "short_name": "SignalPath",
+  "name": "StormPath",
+  "short_name": "StormPath",
   "icons": [
     {
       "src": "/web-app-manifest-192x192.png",

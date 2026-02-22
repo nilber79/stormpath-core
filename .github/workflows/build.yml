@@ -34,7 +34,7 @@ jobs:
           context: .
           file: docker/Dockerfile.core
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/signalpath-core:latest
+          tags: ghcr.io/${{ github.repository_owner }}/stormpath-core:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -151,6 +151,6 @@ jobs:
           build-args: |
             AREA=${{ matrix.area }}
             GHCR_ORG=${{ github.repository_owner }}
-          tags: ghcr.io/${{ github.repository_owner }}/signalpath:${{ steps.tag.outputs.val }}
+          tags: ghcr.io/${{ github.repository_owner }}/stormpath:${{ steps.tag.outputs.val }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

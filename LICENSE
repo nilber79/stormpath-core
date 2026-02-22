@@ -1,11 +1,11 @@
-SignalPath Source Available License v1.0
+StormPath Source Available License v1.0
 ========================================
 
 Copyright (c) 2026 Phillip Reblin. All rights reserved.
 
 DEFINITIONS
 -----------
-"Software" means the SignalPath source code, binaries, Docker images, and all
+"Software" means the StormPath source code, binaries, Docker images, and all
 associated files in this repository.
 
 "Non-Commercial Use" means use by an individual, non-profit organization, or
@@ -33,7 +33,7 @@ RESTRICTIONS
   1. **No Commercial Use without a separate written agreement.**  You may not
      use the Software for Commercial Use without first obtaining a commercial
      license from the Licensor. To inquire about commercial licensing, contact:
-     signalpath@reblin.us
+     info@stormpath.app
 
   2. **No sublicensing.** You may not grant sublicenses or otherwise transfer
      any rights in the Software beyond what this license expressly permits.
@@ -44,7 +44,7 @@ RESTRICTIONS
      origin of the Software.
 
   4. **Attribution.** All deployments of the Software (including derivative
-     works) must retain a visible attribution to "SignalPath by Phillip Reblin"
+     works) must retain a visible attribution to "StormPath by Phillip Reblin"
      in the application user interface or documentation.
 
 DISCLAIMER

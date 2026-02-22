@@ -1,4 +1,4 @@
-# ── SignalPath Core Image ──────────────────────────────────────────────────────
+# ── StormPath Core Image ──────────────────────────────────────────────────────
 # Base image containing the web application source (no county-specific data).
 # Built on FrankenPHP which embeds PHP 8.4 into Caddy, giving us:
 #   - Static file serving (HTML, CSS, JS, PMTiles)

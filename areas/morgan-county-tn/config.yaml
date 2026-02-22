@@ -14,10 +14,10 @@ area:
   proximity_radius_km: 80
 
 app:
-  # title is auto-generated as "SignalPath – {area.name}, {area.state}"
+  # title is auto-generated as "StormPath – {area.name}, {area.state}"
   subtitle: "Realtime, community-sourced, road status"
-  contact_email: "signalpath@reblin.us"
-  github_url: "https://github.com/nilber79/signalpath-core"
+  contact_email: "info@stormpath.app"
+  github_url: "https://github.com/nilber79/stormpath-core"
   owner_name: "Phillip Reblin"
   copyright_year: "2026"
 
