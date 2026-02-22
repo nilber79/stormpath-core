@@ -31,9 +31,6 @@ services:
   watchtower:
     image: nickfedor/watchtower:latest
     restart: unless-stopped
-    environment:
-      # Required on Docker 25+ — force Watchtower to negotiate a supported API version.
-      DOCKER_API_VERSION: "1.47"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     # Check for a new image every hour; only watch the signalpath container.

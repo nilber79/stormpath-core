@@ -51,6 +51,34 @@ SignalPath runs as a single Docker container — no external database server req
 
 ---
 
+### Configuring `.env`
+
+Both scenarios use the same `.env` file. Copy `.env.example` to `.env` and fill in your values:
+
+```env
+GHCR_ORG=your-github-username            # Your GitHub username (the fork owner)
+AREA_TAG=your-area-slug-latest           # Your area slug + "-latest"
+DOMAIN=roadstatus.yourcounty.gov         # Your domain — Scenario A only (see below)
+ADMIN_PASSWORD=your-strong-password-here # Password for /admin.php and /phpliteadmin.php
+```
+
+| Variable | Scenario A | Scenario B |
+|---|---|---|
+| `GHCR_ORG` | Required | Required |
+| `AREA_TAG` | Required | Required |
+| `ADMIN_PASSWORD` | Required | Required |
+| `DOMAIN` | Required — set to your real hostname | Not used — leave blank or omit |
+
+> **What `DOMAIN` does (Scenario A):** FrankenPHP/Caddy reads `DOMAIN` as the hostname to
+> serve and obtain a Let's Encrypt certificate for. The domain must already point to your
+> server's public IP before you start the container.
+>
+> **Scenario B note:** `SERVER_NAME: ":80"` (HTTP-only mode, no certificate) is already
+> set inside `docker-compose.proxy.yml` — you do not need to configure this yourself.
+> Your upstream proxy handles TLS; the container only speaks HTTP on your private Docker network.
+
+---
+
 ### Scenario A — Standalone (Recommended for new deployments)
 
 SignalPath handles everything itself: it serves the website, obtains a free HTTPS
@@ -66,18 +94,10 @@ curl -O https://raw.githubusercontent.com/nilber79/signalpath-core/main/deploy/.
 
 # 2. Create your local config file
 cp .env.example .env
-nano .env     # fill in your values (see below)
+nano .env
 
 # 3. Start SignalPath
 docker compose up -d
-```
-
-**What to put in `.env`:**
-```env
-GHCR_ORG=your-github-username            # Your GitHub username (the fork owner)
-AREA_TAG=your-area-slug-latest           # Your area slug + "-latest"
-DOMAIN=roadstatus.yourcounty.gov         # Your domain name (must point to this server)
-ADMIN_PASSWORD=your-strong-password-here # Password for /admin.php and /phpliteadmin.php
 ```
 
 SignalPath will be live at `https://your.domain` within a minute or two.
@@ -106,7 +126,7 @@ curl -O https://raw.githubusercontent.com/nilber79/signalpath-core/main/deploy/.
 
 # 2. Create your local config file
 cp .env.example .env
-nano .env     # fill in GHCR_ORG, AREA_TAG, and ADMIN_PASSWORD (DOMAIN is not used here)
+nano .env
 
 # 3. Start SignalPath
 docker compose -f docker-compose.proxy.yml up -d
