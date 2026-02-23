@@ -186,7 +186,16 @@
 
                 this.initMap();
                 this.loadRoads();
-                this.loadReports();
+
+                // Connect SSE first — its init event delivers all current reports and
+                // marks reportsLoaded = true. Only fall back to loadReports() if SSE
+                // hasn't delivered init within 5 seconds (slow connect or unavailable).
+                this.connectSSE();
+                setTimeout(() => {
+                    if (!this.initializationState.reportsLoaded) {
+                        this.loadReports();
+                    }
+                }, 5000);
 
                 // Track map interactions to avoid refreshing during user activity
                 // Track multiple event types to catch the entire click/touch sequence
@@ -214,9 +223,6 @@
 
                 // Load notification preferences from localStorage
                 this.loadNotificationPreferences();
-
-                // Connect to Server-Sent Events for real-time updates
-                this.connectSSE();
 
                 // Fallback polling in case SSE isn't working (checks every 30 seconds)
                 this.refreshInterval = setInterval(() => {
@@ -531,7 +537,7 @@
                     const timeoutId = setTimeout(() => controller.abort(), 30000);
                     let response;
                     try {
-                        response = await fetch(`api.php?action=get_roads_stream&_=${timestamp}`, { signal: controller.signal });
+                        response = await fetch(`data/roads_optimized.jsonl`, { signal: controller.signal });
                     } finally {
                         clearTimeout(timeoutId);
                     }
@@ -2182,6 +2188,9 @@
                                 // Full report set on connection/reconnection
                                 this.lastChangeId = data.lastChangeId || 0;
                                 this.processReportsUpdate(data.reports);
+                                // SSE init counts as reports loaded
+                                this.initializationState.reportsLoaded = true;
+                                this.checkInitializationComplete();
                             } else if (data.type === 'report_added') {
                                 // Delta: single report added
                                 const timeSinceInteraction = Date.now() - this.lastUserInteraction;
