@@ -3,21 +3,22 @@
  * StormPath Admin Interface
  *
  * Accessible at /admin.php
- * Password is set via the ADMIN_PASSWORD environment variable in your .env file.
+ * Requires an account with the 'admin' role.
  *
  * Features:
  *   - View, update status, and delete road condition reports
  *   - Manage IP whitelist and blacklist
+ *   - Manage user accounts
  */
 
-session_start();
+require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/auth/auth.php';
+
+$currentUser = requireRole('admin');
 
 function h(string $s): string {
     return htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
-
-$db_path    = __DIR__ . '/data/reports.db';
-$admin_pass = getenv('ADMIN_PASSWORD') ?: 'changeme';
 
 $area_cfg   = [];
 $cfg_file   = __DIR__ . '/area-config.json';
@@ -27,81 +28,10 @@ if (file_exists($cfg_file)) {
 $county_name  = $area_cfg['area_name']  ?? 'StormPath';
 $county_state = $area_cfg['area_state'] ?? '';
 
-// ── Authentication ────────────────────────────────────────────────────────
-
-if (isset($_POST['logout'])) {
-    session_destroy();
-    header('Location: admin.php');
-    exit;
-}
-
-if (isset($_POST['password'])) {
-    if (hash_equals($admin_pass, $_POST['password'])) {
-        $_SESSION['sp_admin'] = true;
-        header('Location: admin.php');
-        exit;
-    }
-    $login_error = 'Incorrect password.';
-}
-
-if (empty($_SESSION['sp_admin'])) {
-    ?>
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Admin Login — StormPath</title>
-        <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-        <link rel="shortcut icon" href="/favicon.ico">
-        <style>
-            body { font-family: 'DM Sans', sans-serif; background: #f8f6f2; display: flex;
-                   align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-            .login-box { background: #fff; border: 1px solid #e0ddd5; border-radius: 12px;
-                         padding: 2.5rem 2rem; width: 100%; max-width: 360px; box-shadow: 0 4px 24px rgba(0,0,0,.07); }
-            .login-logo { font-size: 1.5rem; font-weight: 700; color: #d97706; margin-bottom: 0.25rem; }
-            .login-sub { font-size: 0.875rem; color: #6b6660; margin-bottom: 2rem; }
-            label { display: block; font-size: 0.8125rem; font-weight: 600; color: #2a2622;
-                    margin-bottom: 0.375rem; }
-            input[type=password] { width: 100%; padding: 0.625rem 0.875rem; border: 1px solid #e0ddd5;
-                                   border-radius: 8px; font-size: 1rem; box-sizing: border-box;
-                                   outline: none; transition: border-color .15s; }
-            input[type=password]:focus { border-color: #d97706; }
-            .btn-primary { width: 100%; margin-top: 1rem; padding: 0.75rem; background: #d97706;
-                           color: #fff; border: none; border-radius: 8px; font-size: 1rem;
-                           font-weight: 600; cursor: pointer; }
-            .btn-primary:hover { background: #b45309; }
-            .error { background: #fee2e2; color: #dc2626; border-radius: 8px; padding: 0.625rem 0.875rem;
-                     font-size: 0.875rem; margin-bottom: 1rem; }
-        </style>
-    </head>
-    <body>
-        <div class="login-box">
-            <div class="login-logo">StormPath</div>
-            <div class="login-sub">Admin — <?= h($county_name) ?><?= $county_state ? ', ' . h($county_state) : '' ?></div>
-            <?php if (isset($login_error)): ?>
-                <div class="error"><?= h($login_error) ?></div>
-            <?php endif; ?>
-            <form method="post">
-                <label for="password">Admin Password</label>
-                <input type="password" id="password" name="password" autofocus autocomplete="current-password">
-                <button type="submit" class="btn-primary">Sign In</button>
-            </form>
-        </div>
-    </body>
-    </html>
-    <?php
-    exit;
-}
-
 // ── Database ──────────────────────────────────────────────────────────────
 
 try {
-    $pdo = new PDO("sqlite:$db_path", null, null, [
-        PDO::ATTR_ERRMODE    => PDO::ERRMODE_EXCEPTION,
-        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-    ]);
-    $pdo->exec("PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;");
+    $pdo = getDb();
 } catch (Exception $e) {
     die('<p style="color:red;padding:2rem">Cannot open database: ' . h($e->getMessage()) . '</p>');
 }
@@ -158,7 +88,7 @@ if ($action === 'remove_ip') {
 
 // ── Data ──────────────────────────────────────────────────────────────────
 
-$active_tab = in_array($_GET['tab'] ?? 'reports', ['reports', 'ip', 'merge_issues'])
+$active_tab = in_array($_GET['tab'] ?? 'reports', ['reports', 'ip', 'merge_issues', 'users'])
     ? ($_GET['tab'] ?? 'reports') : 'reports';
 
 // Show reports from the last 30 days so admins can see recent history
@@ -565,10 +495,9 @@ function is_active(string $ts): bool {
         <div class="admin-header-sub"><?= h($county_name) ?><?= $county_state ? ', ' . h($county_state) : '' ?></div>
     </div>
     <div class="admin-header-actions">
+        <span style="font-size:0.8125rem;color:#9ca3af"><?= h($currentUser['username']) ?></span>
         <a class="btn-back" href="/">← Map</a>
-        <form method="post">
-            <button class="btn-logout" name="logout" value="1">Sign out</button>
-        </form>
+        <a class="btn-logout" href="/auth/logout.php" style="text-decoration:none">Sign out</a>
     </div>
 </header>
 
@@ -581,6 +510,9 @@ function is_active(string $ts): bool {
     </a>
     <a class="tab <?= $active_tab === 'merge_issues' ? 'active' : '' ?>" href="admin.php?tab=merge_issues">
         Merge Issues<?php if (count($merge_issues) > 0): ?> <span class="count-badge"><?= count($merge_issues) ?></span><?php endif; ?>
+    </a>
+    <a class="tab <?= $active_tab === 'users' ? 'active' : '' ?>" href="admin-users.php">
+        Users
     </a>
 </nav>
 
