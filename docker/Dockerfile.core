@@ -8,8 +8,9 @@
 
 FROM dunglas/frankenphp:php8.4
 
-# Install pdo_sqlite (required for reports.db)
-RUN install-php-extensions pdo_sqlite
+# Install PHP extensions (pdo_sqlite for reports.db, gmp for WebAuthn CBOR arithmetic,
+# zip required by Composer to download packages during build)
+RUN install-php-extensions pdo_sqlite gmp zip
 
 # Install Litestream for SQLite replication to S3/R2.
 # Static binary — no runtime deps.  The entrypoint wraps FrankenPHP with
@@ -32,6 +33,12 @@ COPY docker/litestream.yml /etc/litestream.yml
 # /app/public/index.php) — otherwise php_server serves it instead of index.html.
 COPY app/ /app/public/
 RUN rm -f /app/public/index.php
+
+# Install Composer dependencies (build-time only — vendor dir is baked into image,
+# Composer binary is removed from the final image).
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+RUN cd /app/public && composer install --no-dev --optimize-autoloader --no-interaction --no-progress
+RUN rm /usr/bin/composer
 
 # Caddy / FrankenPHP server configuration
 COPY docker/Caddyfile /etc/caddy/Caddyfile

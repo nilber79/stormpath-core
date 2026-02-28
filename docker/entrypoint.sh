@@ -112,6 +112,70 @@ echo \"Schema initialised.\\n\";
     echo "[entrypoint] reports.db ready"
 fi
 
+# Migrate schema: add auth tables and new columns (idempotent, runs on every start)
+php -r "
+\$db = new PDO('sqlite:$DATA_DIR/reports.db');
+\$db->exec('PRAGMA journal_mode=WAL; PRAGMA busy_timeout=5000;');
+\$db->exec('
+    CREATE TABLE IF NOT EXISTS users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT NOT NULL UNIQUE,
+        email TEXT UNIQUE,
+        display_name TEXT,
+        password_hash TEXT,
+        totp_secret TEXT,
+        totp_enabled INTEGER DEFAULT 0,
+        role TEXT NOT NULL DEFAULT \\'user\\',
+        status TEXT NOT NULL DEFAULT \\'pending\\',
+        created_at TEXT DEFAULT (strftime(\\'%Y-%m-%dT%H:%M:%fZ\\',\\'now\\')),
+        last_login TEXT
+    )
+');
+\$db->exec('
+    CREATE TABLE IF NOT EXISTS passkeys (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        credential_id BLOB NOT NULL UNIQUE,
+        public_key_cbor BLOB NOT NULL,
+        sign_count INTEGER NOT NULL DEFAULT 0,
+        aaguid TEXT,
+        name TEXT,
+        created_at TEXT DEFAULT (strftime(\\'%Y-%m-%dT%H:%M:%fZ\\',\\'now\\')),
+        last_used TEXT
+    )
+');
+\$db->exec('
+    CREATE TABLE IF NOT EXISTS webauthn_challenges (
+        id TEXT PRIMARY KEY,
+        challenge TEXT NOT NULL,
+        user_id INTEGER,
+        type TEXT NOT NULL,
+        created_at TEXT DEFAULT (strftime(\\'%Y-%m-%dT%H:%M:%fZ\\',\\'now\\'))
+    )
+');
+\$cols    = \$db->query('PRAGMA table_info(reports)')->fetchAll(PDO::FETCH_ASSOC);
+\$colNames = array_column(\$cols, 'name');
+if (!in_array('submitted_by', \$colNames)) {
+    \$db->exec('ALTER TABLE reports ADD COLUMN submitted_by INTEGER REFERENCES users(id)');
+    echo \"[entrypoint] Added submitted_by column to reports.\\n\";
+}
+\$userCols = array_column(\$db->query('PRAGMA table_info(users)')->fetchAll(PDO::FETCH_ASSOC), 'name');
+if (!in_array('prefs', \$userCols)) {
+    \$db->exec('ALTER TABLE users ADD COLUMN prefs TEXT');
+    echo \"[entrypoint] Added prefs column to users.\\n\";
+}
+\$adminUser = getenv('ADMIN_USERNAME') ?: 'admin';
+\$adminPass = getenv('ADMIN_PASSWORD') ?: '';
+\$userCount = (int)\$db->query('SELECT COUNT(*) FROM users')->fetchColumn();
+if (\$adminPass && \$userCount === 0) {
+    \$hash = password_hash(\$adminPass, PASSWORD_BCRYPT);
+    \$stmt = \$db->prepare('INSERT OR IGNORE INTO users (username, password_hash, role, status) VALUES (?, ?, \\'admin\\', \\'active\\')');
+    \$stmt->execute([\$adminUser, \$hash]);
+    echo \"[entrypoint] Admin user seeded (username: \$adminUser).\\n\";
+}
+echo \"[entrypoint] Auth schema ready.\\n\";
+"
+
 # Write rebuild metadata from the baked-in JSON into the SQLite metadata table.
 # Runs on every container start so the table stays current when a new image is pulled.
 if [ -f "$DATA_DIR/rebuild_metadata.json" ]; then
