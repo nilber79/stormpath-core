@@ -24,13 +24,18 @@ done
 
 echo "[entrypoint] Roads data ready in $DATA_DIR"
 
-# Restore from Litestream replica before schema init so a VPS restore gets
-# current data rather than starting from a blank schema.
-# -if-replica-exists makes this a no-op on first run when nothing has been
-# pushed yet, so it is safe to run unconditionally when credentials are set.
+# Restore from Litestream replica only when reports.db is absent.
+# This covers two cases:
+#   - Fresh deployment / new server: restore latest snapshot from R2 so no data is lost.
+#   - Normal image update (Watchtower): reports.db already exists in the persistent
+#     volume and is current; skip restore to avoid the "output path already exists" error.
 if [ -n "${LITESTREAM_ACCESS_KEY_ID}" ] && [ -n "${LITESTREAM_SECRET_ACCESS_KEY}" ] && [ -n "${LITESTREAM_BUCKET}" ]; then
-    echo "[entrypoint] Litestream: restoring from replica (no-op if none exists yet)..."
-    litestream restore -config /etc/litestream.yml -if-replica-exists "$DATA_DIR/reports.db"
+    if [ ! -f "$DATA_DIR/reports.db" ]; then
+        echo "[entrypoint] Litestream: restoring from replica (no-op if none exists yet)..."
+        litestream restore -config /etc/litestream.yml -if-replica-exists "$DATA_DIR/reports.db"
+    else
+        echo "[entrypoint] Litestream: reports.db exists in volume, skipping restore."
+    fi
 fi
 
 # Initialise SQLite schema on first run
