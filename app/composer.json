@@ -8,7 +8,7 @@
         "symfony/property-access": "^7.0",
         "symfony/property-info": "^7.0",
         "symfony/serializer": "^7.0",
-        "web-auth/webauthn-lib": "^4.9"
+        "web-auth/webauthn-lib": "^5.2"
     },
     "config": {
         "vendor-dir": "vendor",
