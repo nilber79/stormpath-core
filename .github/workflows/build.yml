@@ -88,7 +88,7 @@ jobs:
       # Cache the raw Overpass API response — gives rebuild_roads.py a fallback
       # if overpass-api.de is temporarily unavailable during a push-triggered build.
       - name: Cache Overpass roads data
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: build-output/data/
           key: roads-${{ matrix.area }}-${{ github.run_id }}
@@ -114,7 +114,7 @@ jobs:
           echo "date=$date" >> $GITHUB_OUTPUT
 
       - name: Cache Geofabrik PBF
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: /tmp/geofabrik-cache
           key: geofabrik-${{ matrix.area }}-${{ steps.pbf-date.outputs.date }}
@@ -125,7 +125,7 @@ jobs:
       # changed since the last build, skip Planetiler entirely.
       - name: Cache PMTiles output
         id: tiles-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: build-output/tiles/
           key: pmtiles-${{ matrix.area }}-${{ steps.pbf-date.outputs.date }}
