@@ -80,12 +80,20 @@ def simplify_geometry(coords_lat_lon: list, tolerance: float) -> list:
 
 # ── Overpass API fetch ──────────────────────────────────────────────────────────
 
+# Public mirror servers tried in order after the primary fails.
+# All implement the standard Overpass API; no registration required.
+_OVERPASS_FALLBACKS = [
+    "https://overpass.kumi.systems/api/interpreter",
+    "https://overpass.openstreetmap.ru/api/interpreter",
+]
+
+
 def fetch_overpass(cfg: dict, cache_file: Path, retries: int = 3) -> dict:
-    """Fetch road data from Overpass API, with fallback to cache on failure."""
+    """Fetch road data from Overpass API, with mirror fallbacks and local cache."""
     relation_id = cfg["area"]["osm_relation_id"]
     area_id = relation_id + 3600000000
     road_types = "|".join(cfg["data"]["road_types"])
-    overpass_url = cfg["data"]["overpass_url"]
+    primary_url = cfg["data"]["overpass_url"]
 
     query = f"""[out:json][timeout:120];
 area({area_id})->.searcharea;
@@ -96,40 +104,46 @@ out body;
 >;
 out skel qt;"""
 
-    log(f"Fetching data from Overpass API (area {area_id})...")
+    log(f"Fetching road data for area {area_id}...")
 
-    for attempt in range(1, retries + 1):
-        try:
-            resp = requests.post(
-                overpass_url,
-                data={"data": query},
-                timeout=150,
-                headers={"User-Agent": "StormPath/1.0 road-status-app"},
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            if "elements" not in data:
-                raise ValueError("Response missing 'elements' key")
+    # Try primary server (with retries), then each mirror once.
+    servers = [primary_url] + [s for s in _OVERPASS_FALLBACKS if s != primary_url]
+    for server_idx, overpass_url in enumerate(servers):
+        server_retries = retries if server_idx == 0 else 1
+        if server_idx > 0:
+            log(f"Trying fallback Overpass mirror: {overpass_url}")
+        for attempt in range(1, server_retries + 1):
+            try:
+                resp = requests.post(
+                    overpass_url,
+                    data={"data": query},
+                    timeout=150,
+                    headers={"User-Agent": "StormPath/1.0 road-status-app"},
+                )
+                resp.raise_for_status()
+                data = resp.json()
+                if "elements" not in data:
+                    raise ValueError("Response missing 'elements' key")
 
-            # Save raw cache
-            cache_file.parent.mkdir(parents=True, exist_ok=True)
-            cache_file.write_text(resp.text)
-            log(f"Received {len(data['elements'])} elements from Overpass API")
-            return data
+                # Save raw cache
+                cache_file.parent.mkdir(parents=True, exist_ok=True)
+                cache_file.write_text(resp.text)
+                log(f"Received {len(data['elements'])} elements from {overpass_url}")
+                return data
 
-        except Exception as exc:
-            log(f"Attempt {attempt}/{retries} failed: {exc}")
-            if attempt < retries:
-                time.sleep(10 * attempt)
+            except Exception as exc:
+                log(f"Attempt {attempt}/{server_retries} failed ({overpass_url}): {exc}")
+                if attempt < server_retries:
+                    time.sleep(10 * attempt)
 
-    # All attempts failed — try cache
+    # All servers failed — try local file cache
     if cache_file.exists() and cache_file.stat().st_size > 0:
-        log("Using cached roads.json (Overpass API unavailable)")
+        log("Using cached roads.json (all Overpass servers unavailable)")
         data = json.loads(cache_file.read_text())
         if "elements" in data:
             return data
 
-    log("ERROR: No data available from API or cache. Exiting.")
+    log("ERROR: No data available from any Overpass server or cache. Exiting.")
     sys.exit(1)
 
 

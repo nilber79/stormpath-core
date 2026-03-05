@@ -85,6 +85,16 @@ jobs:
       - name: Install Python dependencies
         run: pip install requests shapely pyproj pyyaml
 
+      # Cache the raw Overpass API response — gives rebuild_roads.py a fallback
+      # if overpass-api.de is temporarily unavailable during a push-triggered build.
+      - name: Cache Overpass roads data
+        uses: actions/cache@v4
+        with:
+          path: build-output/data/
+          key: roads-${{ matrix.area }}-${{ github.run_id }}
+          restore-keys: |
+            roads-${{ matrix.area }}-
+
       - name: Rebuild roads (Overpass API)
         run: |
           python scripts/rebuild_roads.py \

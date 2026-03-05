@@ -1,9 +1,10 @@
 name: Nightly Data Refresh
 
 on:
-  # Run every night at 3 AM Eastern (08:00 UTC)
+  # Run every night at midnight Eastern (05:00 UTC).
+  # Avoids European peak hours on overpass-api.de (Germany-hosted).
   schedule:
-    - cron: '0 8 * * *'
+    - cron: '0 5 * * *'
   # Allow manual trigger from the Actions tab
   workflow_dispatch:
     inputs:
@@ -59,6 +60,17 @@ jobs:
 
       - name: Install Python dependencies
         run: pip install requests shapely pyproj pyyaml
+
+      # Cache the raw Overpass API response between nightly runs.
+      # If overpass-api.de is temporarily unavailable, rebuild_roads.py falls back
+      # to the restored roads.json automatically (see fetch_overpass() in the script).
+      - name: Cache Overpass roads data
+        uses: actions/cache@v4
+        with:
+          path: build-output/data/
+          key: roads-${{ matrix.area }}-${{ github.run_id }}
+          restore-keys: |
+            roads-${{ matrix.area }}-
 
       - name: Rebuild roads (Overpass API)
         run: |
