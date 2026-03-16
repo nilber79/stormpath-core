@@ -1,6 +1,10 @@
 {
-	# Enable FrankenPHP worker mode for better PHP performance
-	frankenphp
+	frankenphp {
+		# Allow up to 200 concurrent PHP threads.
+		# Default is 2×CPU (24 on this host), which is easily exhausted when
+		# many users hold open SSE connections simultaneously.
+		max_threads 200
+	}
 }
 
 # SERVER_NAME controls the domain and TLS behaviour:

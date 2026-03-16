@@ -244,6 +244,9 @@ try {
             break;
 
         case 'get_reports':
+            // Let Cloudflare cache this for 15 s so concurrent users share one origin hit.
+            // Browsers revalidate every request (max-age=0) but CDN serves from cache.
+            header('Cache-Control: public, s-maxage=15, max-age=0');
             $db = getDb();
             $stmt = $db->query("SELECT * FROM reports WHERE timestamp > datetime('now', '-3 days') ORDER BY timestamp DESC");
             $reports = [];

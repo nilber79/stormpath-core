@@ -54,8 +54,7 @@
                     searchResults: [],
                     statusFilter: 'all',
                     refreshInterval: null,
-                    eventSource: null, // SSE connection for real-time updates
-                    sseReconnectTimeout: null,
+                    pollInterval: null, // Polling interval for report updates
                     showAboutModal: false,
                     showHelpModal: false,
                     showDisclaimerModal: false,
@@ -88,7 +87,6 @@
                     notificationStatuses: ['blocked-tree', 'blocked-power'],
                     showNotificationSettings: false,
                     showMobileNotifications: false,
-                    lastChangeId: 0, // Tracks SSE delta position
                     toasts: [], // Active foreground toast notifications
                     areaConfig: null, // Loaded from /area-config.json at startup
                     rebuildMeta: null, // Loaded from /api.php?action=get_metadata at startup
@@ -218,15 +216,9 @@
                 this.initMap();
                 this.loadRoads();
 
-                // Connect SSE first — its init event delivers all current reports and
-                // marks reportsLoaded = true. Only fall back to loadReports() if SSE
-                // hasn't delivered init within 5 seconds (slow connect or unavailable).
-                this.connectSSE();
-                setTimeout(() => {
-                    if (!this.initializationState.reportsLoaded) {
-                        this.loadReports();
-                    }
-                }, 5000);
+                // Start polling for reports every 15 s. Cloudflare caches the response
+                // for 15 s (s-maxage=15) so many concurrent users share one origin hit.
+                this.startPolling();
 
                 // Track map interactions to avoid refreshing during user activity
                 // Track multiple event types to catch the entire click/touch sequence
@@ -255,36 +247,17 @@
                 // Load notification preferences from localStorage
                 this.loadNotificationPreferences();
 
-                // Fallback polling in case SSE isn't working (checks every 30 seconds)
-                this.refreshInterval = setInterval(() => {
-                    // Only use fallback if SSE is disconnected
-                    if (!this.eventSource || this.eventSource.readyState !== EventSource.OPEN) {
-                        const timeSinceInteraction = Date.now() - this.lastUserInteraction;
-                        if (timeSinceInteraction > 4000) {
-                            console.log('SSE disconnected, using fallback polling');
-                            this.loadReports();
-                        }
-                    }
-                }, 30000);
-
-                // When the tab becomes visible again, reconnect SSE so we get a fresh
-                // init event with all current reports.  Browsers throttle or freeze
-                // background tabs, which means SSE onmessage callbacks may be delayed or
-                // dropped entirely while the tab is hidden.  Reconnecting on visibility
-                // re-establish is the simplest way to guarantee the data is current.
+                // When the tab becomes visible again, fetch reports immediately so
+                // data is current after the tab was in the background.
                 document.addEventListener('visibilitychange', () => {
                     if (!document.hidden) {
-                        this.connectSSE();
+                        this.fetchReports();
                     }
                 });
             },
             beforeUnmount() {
-                // Clean up SSE connection
-                if (this.eventSource) {
-                    this.eventSource.close();
-                }
-                if (this.sseReconnectTimeout) {
-                    clearTimeout(this.sseReconnectTimeout);
+                if (this.pollInterval) {
+                    clearInterval(this.pollInterval);
                 }
                 if (this.refreshInterval) {
                     clearInterval(this.refreshInterval);
@@ -788,8 +761,8 @@
                         this.map.getCanvas().style.cursor = '';
                     });
 
-                    // Load reports after roads are added
-                    this.loadReports();
+                    // Render report segments now that roads are on the map
+                    this.fetchReports();
                 },
                 
                 updateVisibleRoads() {
@@ -2464,72 +2437,31 @@
                     }
                 },
                 
-                connectSSE() {
-                    // Close existing connection if any
-                    if (this.eventSource) {
-                        this.eventSource.close();
-                    }
+                startPolling() {
+                    this.fetchReports();
+                    if (this.pollInterval) clearInterval(this.pollInterval);
+                    this.pollInterval = setInterval(() => this.fetchReports(), 15000);
+                },
 
-                    this.eventSource = new EventSource('sse.php');
-
-                    this.eventSource.onopen = () => {
-                    };
-
-                    this.eventSource.onmessage = (event) => {
-                        try {
-                            const data = JSON.parse(event.data);
-
-                            if (data.type === 'init') {
-                                // Full report set on connection/reconnection
-                                this.lastChangeId = data.lastChangeId || 0;
-                                this.processReportsUpdate(data.reports);
-                                // SSE init counts as reports loaded
+                async fetchReports() {
+                    try {
+                        const response = await fetch('api.php?action=get_reports');
+                        if (!response.ok) return;
+                        const data = await response.json();
+                        if (data.success && data.reports) {
+                            this.processReportsUpdate(data.reports);
+                            if (!this.initializationState.reportsLoaded) {
                                 this.initializationState.reportsLoaded = true;
                                 this.checkInitializationComplete();
-                            } else if (data.type === 'report_added') {
-                                // Delta: single report added
-                                const timeSinceInteraction = Date.now() - this.lastUserInteraction;
-                                if (timeSinceInteraction > 4000) {
-                                    this.handleReportAdded(data.report);
-                                }
-                                if (data.changeId) this.lastChangeId = data.changeId;
-                            } else if (data.type === 'report_updated') {
-                                // Delta: single report updated (e.g. via database admin)
-                                const timeSinceInteraction = Date.now() - this.lastUserInteraction;
-                                if (timeSinceInteraction > 4000) {
-                                    this.handleReportUpdated(data.report);
-                                }
-                                if (data.changeId) this.lastChangeId = data.changeId;
-                            } else if (data.type === 'report_deleted') {
-                                // Delta: single report deleted
-                                const timeSinceInteraction = Date.now() - this.lastUserInteraction;
-                                if (timeSinceInteraction > 4000) {
-                                    this.handleReportDeleted(data.reportId);
-                                }
-                                if (data.changeId) this.lastChangeId = data.changeId;
                             }
-                        } catch (error) {
-                            console.error('[SSE] Error parsing data:', error, 'Raw data:', event.data);
                         }
-                    };
-
-                    this.eventSource.onerror = (error) => {
-                        console.error('[SSE] Connection error! ReadyState:', this.eventSource.readyState);
-                        console.error('[SSE] Error details:', error);
-                        this.eventSource.close();
-
-                        // Reconnect after 5 seconds
-                        if (this.sseReconnectTimeout) {
-                            clearTimeout(this.sseReconnectTimeout);
-                        }
-                        this.sseReconnectTimeout = setTimeout(() => {
-                            this.connectSSE();
-                        }, 5000);
-                    };
+                    } catch (e) {
+                        // Silent fail — next poll will retry
+                    }
                 },
 
                 processReportsUpdate(newReports) {
-                    // Process SSE update with the same logic as loadReports
+                    // Process a full report list, diffing against current state
                     try {
                         const oldReports = this.reports;
 
@@ -2613,115 +2545,6 @@
                         }
                     } catch (error) {
                         console.error('Error processing SSE update:', error);
-                    }
-                },
-
-                handleReportAdded(report) {
-                    // Check if we already have this report (e.g. from optimistic add)
-                    const existingIdx = this.reports.findIndex(r => r.id === report.id);
-                    if (existingIdx !== -1) {
-                        // Update in place if status changed
-                        if (this.reports[existingIdx].status !== report.status) {
-                            this.reports.splice(existingIdx, 1, report);
-                        }
-                        return;
-                    }
-
-                    // Add to reports array
-                    this.reports.push(report);
-
-                    // Notify if appropriate
-                    this.notifyNewReports([report]);
-
-                    // Re-render affected road on map
-                    if (this.map && this.initializationState.roadsLoaded && this.allRoads && this.allRoads.length > 0) {
-                        if (this.selectionMode && this.selectedRoad && report.road_id === this.selectedRoad.id) {
-                            return;
-                        }
-
-                        const road = this.allRoads.find(r => r.id === report.road_id);
-                        if (road) {
-                            // Clear existing overlays for this road
-                            Object.keys(this.reportSegmentLayers).forEach(key => {
-                                if (key.startsWith(`report-segment-${report.road_id}-`)) {
-                                    this.map.off('click', key);
-                                    this.map.off('mouseenter', key);
-                                    this.map.off('mouseleave', key);
-                                    if (this.map.getLayer(key)) this.map.removeLayer(key);
-                                    if (!key.endsWith('-click') && this.map.getSource(key)) this.map.removeSource(key);
-                                    delete this.reportSegmentLayers[key];
-                                }
-                            });
-                            this.renderReportSegments(road);
-                        }
-                    }
-                },
-
-                handleReportUpdated(report) {
-                    const existingIdx = this.reports.findIndex(r => r.id === report.id);
-                    if (existingIdx === -1) {
-                        // Report doesn't exist locally, treat as add
-                        this.handleReportAdded(report);
-                        return;
-                    }
-
-                    // Replace in place
-                    const oldRoadId = this.reports[existingIdx].road_id;
-                    this.reports.splice(existingIdx, 1, report);
-
-                    // Re-render affected road(s) on map
-                    if (this.map && this.initializationState.roadsLoaded && this.allRoads && this.allRoads.length > 0) {
-                        if (this.selectionMode && this.selectedRoad) return;
-
-                        const roadIds = new Set([oldRoadId, report.road_id]);
-                        for (const roadId of roadIds) {
-                            const road = this.allRoads.find(r => r.id === roadId);
-                            if (road) {
-                                Object.keys(this.reportSegmentLayers).forEach(key => {
-                                    if (key.startsWith(`report-segment-${roadId}-`)) {
-                                        this.map.off('click', key);
-                                        this.map.off('mouseenter', key);
-                                        this.map.off('mouseleave', key);
-                                        if (this.map.getLayer(key)) this.map.removeLayer(key);
-                                        if (!key.endsWith('-click') && this.map.getSource(key)) this.map.removeSource(key);
-                                        delete this.reportSegmentLayers[key];
-                                    }
-                                });
-                                this.renderReportSegments(road);
-                            }
-                        }
-                    }
-                },
-
-                handleReportDeleted(reportId) {
-                    const report = this.reports.find(r => r.id === reportId);
-                    if (!report) return;
-
-                    const roadId = report.road_id;
-
-                    // Remove from reports array
-                    this.reports = this.reports.filter(r => r.id !== reportId);
-
-                    // Re-render affected road on map
-                    if (this.map && this.initializationState.roadsLoaded && this.allRoads && this.allRoads.length > 0) {
-                        if (this.selectionMode && this.selectedRoad && roadId === this.selectedRoad.id) {
-                            return;
-                        }
-
-                        const road = this.allRoads.find(r => r.id === roadId);
-                        if (road) {
-                            Object.keys(this.reportSegmentLayers).forEach(key => {
-                                if (key.startsWith(`report-segment-${roadId}-`)) {
-                                    this.map.off('click', key);
-                                    this.map.off('mouseenter', key);
-                                    this.map.off('mouseleave', key);
-                                    if (this.map.getLayer(key)) this.map.removeLayer(key);
-                                    if (!key.endsWith('-click') && this.map.getSource(key)) this.map.removeSource(key);
-                                    delete this.reportSegmentLayers[key];
-                                }
-                            });
-                            this.renderReportSegments(road);
-                        }
                     }
                 },
 
@@ -3008,138 +2831,6 @@
                     }
                 },
 
-                async loadReports() {
-                    try {
-                        // Use JSONL streaming for progressive loading
-                        const timestamp = new Date().getTime();
-                        const response = await fetch(`api.php?action=get_reports_stream&_=${timestamp}`, {
-                            headers: {
-                                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                                'Pragma': 'no-cache'
-                            }
-                        });
-
-                        if (!response.ok) {
-                            console.warn('Failed to load reports:', response.status);
-                            this.initializationState.reportsLoaded = true;
-                            this.checkInitializationComplete();
-                            return;
-                        }
-
-                        // Stream JSONL data
-                        const reader = response.body.getReader();
-                        const decoder = new TextDecoder();
-                        let buffer = '';
-                        const newReports = [];
-
-                        while (true) {
-                            const { done, value } = await reader.read();
-                            if (done) break;
-
-                            buffer += decoder.decode(value, { stream: true });
-                            const lines = buffer.split('\n');
-                            buffer = lines.pop(); // Keep incomplete line in buffer
-
-                            for (const line of lines) {
-                                if (line.trim()) {
-                                    const report = JSON.parse(line);
-                                    newReports.push(report);
-                                }
-                            }
-                        }
-
-                        // Process remaining buffer
-                        if (buffer.trim()) {
-                            const report = JSON.parse(buffer);
-                            newReports.push(report);
-                        }
-
-                        // Now process the reports with the same logic as before
-                        const oldReports = this.reports;
-
-                        // Check if this is initial render (no layers exist yet)
-                        const isInitialRender = Object.keys(this.reportSegmentLayers).length === 0;
-
-                        // Create sets of report IDs for comparison
-                        const oldReportIds = new Set(oldReports.map(r => r.id));
-                        const newReportIds = new Set(newReports.map(r => r.id));
-
-                        // Find deleted reports (in old but not in new)
-                        const deletedReportIds = [...oldReportIds].filter(id => !newReportIds.has(id));
-
-                        // Find roads affected by deletions
-                        const roadsNeedingUpdate = new Set();
-                        deletedReportIds.forEach(reportId => {
-                            const report = oldReports.find(r => r.id === reportId);
-                            if (report) {
-                                roadsNeedingUpdate.add(report.road_id);
-                            }
-                        });
-
-                        // Check for new or changed reports
-                        newReports.forEach(newReport => {
-                            const oldReport = oldReports.find(r => r.id === newReport.id);
-                            if (!oldReport || oldReport.status !== newReport.status) {
-                                // New report or status changed
-                                roadsNeedingUpdate.add(newReport.road_id);
-                            }
-                        });
-
-                        // Update the reports data
-                        this.reports = newReports;
-
-                        // Only update roads that have changes (if map and ALL roads are fully loaded)
-                        if (this.map && this.initializationState.roadsLoaded && this.allRoads && this.allRoads.length > 0) {
-                            // On initial render, render all roads with reports
-                            // On subsequent renders, only render roads with changes
-                            const roadsToRender = isInitialRender
-                                ? new Set(newReports.map(r => r.road_id))
-                                : roadsNeedingUpdate;
-
-                            roadsToRender.forEach(roadId => {
-                                // Skip the currently selected road if in selection mode
-                                if (this.selectionMode && this.selectedRoad && roadId === this.selectedRoad.id) {
-                                    return;
-                                }
-
-                                const road = this.allRoads.find(r => r.id === roadId);
-                                if (road) {
-                                    // Clear existing overlays for this road only
-                                    Object.keys(this.reportSegmentLayers).forEach(key => {
-                                        if (key.startsWith(`report-segment-${roadId}-`)) {
-                                            this.map.off('click', key);
-                                            this.map.off('mouseenter', key);
-                                            this.map.off('mouseleave', key);
-
-                                            if (this.map.getLayer(key)) this.map.removeLayer(key);
-                                            // Only remove source for main layers, not click layers
-                                            if (!key.endsWith('-click') && this.map.getSource(key)) {
-                                                this.map.removeSource(key);
-                                            }
-                                            delete this.reportSegmentLayers[key];
-                                        }
-                                    });
-
-                                    // Re-render this road's report segments
-                                    this.renderReportSegments(road);
-                                }
-                            });
-                        }
-
-                        // Mark reports as loaded (even if failed - they're optional)
-                        this.initializationState.reportsLoaded = true;
-                        this.checkInitializationComplete();
-                    } catch (error) {
-                        // Silently fail - reports are optional and network errors are common
-                        // Only log to console for debugging
-                        console.debug('Reports unavailable:', error.message);
-
-                        // Still mark as loaded even on error
-                        this.initializationState.reportsLoaded = true;
-                        this.checkInitializationComplete();
-                    }
-                },
-                
                 getRoadStatus(roadId, roadName) {
                     const roadReports = this.reports.filter(r => 
                         r.road_id == roadId || r.road_name === roadName
