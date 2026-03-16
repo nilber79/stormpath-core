@@ -10,6 +10,15 @@
 
 set -e
 
+# Generate a Mercure JWT secret at startup if one was not supplied via env.
+# PHP uses this same secret to sign publisher JWTs when posting report updates
+# to the internal Mercure hub (127.0.0.1:2099).  The Caddyfile references it
+# as {$MERCURE_JWT_SECRET} so it must be exported before frankenphp starts.
+if [ -z "${MERCURE_JWT_SECRET}" ]; then
+    MERCURE_JWT_SECRET=$(php -r 'echo bin2hex(random_bytes(32));')
+    export MERCURE_JWT_SECRET
+fi
+
 DATA_DIR="/app/public/data"
 IMAGE_ROADS="/image-roads"
 
@@ -172,6 +181,28 @@ if (!in_array('confirmed', \$colNames)) {
 if (!in_array('prefs', \$userCols)) {
     \$db->exec('ALTER TABLE users ADD COLUMN prefs TEXT');
     echo \"[entrypoint] Added prefs column to users.\\n\";
+}
+// First-responder claim columns (registration self-identification)
+if (!in_array('fr_claim', \$userCols)) {
+    \$db->exec('ALTER TABLE users ADD COLUMN fr_claim INTEGER DEFAULT 0');
+    echo \"[entrypoint] Added fr_claim column to users.\\n\";
+}
+if (!in_array('fr_agency', \$userCols)) {
+    \$db->exec('ALTER TABLE users ADD COLUMN fr_agency TEXT');
+    echo \"[entrypoint] Added fr_agency column to users.\\n\";
+}
+if (!in_array('fr_role', \$userCols)) {
+    \$db->exec('ALTER TABLE users ADD COLUMN fr_role TEXT');
+    echo \"[entrypoint] Added fr_role column to users.\\n\";
+}
+if (!in_array('fr_identifier', \$userCols)) {
+    \$db->exec('ALTER TABLE users ADD COLUMN fr_identifier TEXT');
+    echo \"[entrypoint] Added fr_identifier column to users.\\n\";
+}
+// ID.me first-responder verification (optional — requires IDME_CLIENT_ID env var)
+if (!in_array('fr_idme_verified', \$userCols)) {
+    \$db->exec('ALTER TABLE users ADD COLUMN fr_idme_verified INTEGER DEFAULT 0');
+    echo \"[entrypoint] Added fr_idme_verified column to users.\\n\";
 }
 \$adminUser = getenv('ADMIN_USERNAME') ?: 'admin';
 \$adminPass = getenv('ADMIN_PASSWORD') ?: '';

@@ -15,6 +15,37 @@ if (!file_exists($dataDir)) {
 }
 
 /**
+ * Notify the Mercure hub that the reports list has changed.
+ * PHP posts to the internal hub on 127.0.0.1:2099 (loopback-only, never
+ * reachable from outside).  The hub is reverse-proxied to clients via the
+ * main Caddy site block, so this single fire-and-forget POST reaches every
+ * connected browser regardless of whether TLS is used on the public endpoint.
+ * Silently skips if MERCURE_JWT_SECRET is not set (e.g. very old deployments).
+ */
+function publishMercureUpdate(): void {
+    $secret = getenv('MERCURE_JWT_SECRET') ?: '';
+    if (!$secret) return;
+
+    // Minimal HS256 JWT granting publish rights to all topics.
+    $h = rtrim(strtr(base64_encode('{"typ":"JWT","alg":"HS256"}'), '+/', '-_'), '=');
+    $p = rtrim(strtr(base64_encode('{"mercure":{"publish":["*"]}}'), '+/', '-_'), '=');
+    $s = rtrim(strtr(base64_encode(hash_hmac('sha256', "$h.$p", $secret, true)), '+/', '-_'), '=');
+    $jwt = "$h.$p.$s";
+
+    $body = http_build_query(['topic' => 'stormpath/reports', 'data' => '{"type":"update"}']);
+    $ctx  = stream_context_create(['http' => [
+        'method'        => 'POST',
+        'header'        => "Authorization: Bearer $jwt\r\n"
+                         . "Content-Type: application/x-www-form-urlencoded\r\n"
+                         . 'Content-Length: ' . strlen($body),
+        'content'       => $body,
+        'timeout'       => 2,
+        'ignore_errors' => true,
+    ]]);
+    @file_get_contents('http://127.0.0.1:2099/.well-known/mercure', false, $ctx);
+}
+
+/**
  * Convert a database row to the report object format the frontend expects
  */
 function rowToReport($row) {
@@ -357,6 +388,12 @@ try {
                 'success' => true,
                 'report' => $report
             ]);
+
+            // Notify connected browsers via the Mercure hub (fire-and-forget).
+            // The hub broadcasts to all subscribers so they refresh immediately
+            // instead of waiting for the next 30-second poll cycle.
+            publishMercureUpdate();
+
             break;
 
         case 'delete_report':

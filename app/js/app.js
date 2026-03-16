@@ -54,7 +54,8 @@
                     searchResults: [],
                     statusFilter: 'all',
                     refreshInterval: null,
-                    pollInterval: null, // Polling interval for report updates
+                    pollInterval: null,    // 30-second fallback polling
+                    mercureSource: null,  // Mercure SSE subscription for real-time push
                     showAboutModal: false,
                     showHelpModal: false,
                     showDisclaimerModal: false,
@@ -216,9 +217,9 @@
                 this.initMap();
                 this.loadRoads();
 
-                // Start polling for reports every 15 s. Cloudflare caches the response
-                // for 15 s (s-maxage=15) so many concurrent users share one origin hit.
-                this.startPolling();
+                // Connect to the Mercure hub for real-time report updates.
+                // Falls back to 30-second polling when SSE is unavailable.
+                this.startRealtime();
 
                 // Track map interactions to avoid refreshing during user activity
                 // Track multiple event types to catch the entire click/touch sequence
@@ -247,15 +248,19 @@
                 // Load notification preferences from localStorage
                 this.loadNotificationPreferences();
 
-                // When the tab becomes visible again, fetch reports immediately so
-                // data is current after the tab was in the background.
+                // When the tab becomes visible again, refresh data and reconnect
+                // Mercure (browsers may have throttled or closed SSE in the background).
                 document.addEventListener('visibilitychange', () => {
                     if (!document.hidden) {
                         this.fetchReports();
+                        this.connectMercure();
                     }
                 });
             },
             beforeUnmount() {
+                if (this.mercureSource) {
+                    this.mercureSource.close();
+                }
                 if (this.pollInterval) {
                     clearInterval(this.pollInterval);
                 }
@@ -2437,10 +2442,40 @@
                     }
                 },
                 
-                startPolling() {
+                startRealtime() {
+                    // Fetch current state immediately, then connect to Mercure for
+                    // instant push updates.  30-second polling runs as a fallback
+                    // for environments where SSE is blocked (captive portals, etc.).
                     this.fetchReports();
+                    this.connectMercure();
                     if (this.pollInterval) clearInterval(this.pollInterval);
-                    this.pollInterval = setInterval(() => this.fetchReports(), 15000);
+                    this.pollInterval = setInterval(() => this.fetchReports(), 30000);
+                },
+
+                connectMercure() {
+                    if (this.mercureSource) {
+                        this.mercureSource.close();
+                        this.mercureSource = null;
+                    }
+                    try {
+                        const url = new URL('/.well-known/mercure', window.location.href);
+                        url.searchParams.set('topic', 'stormpath/reports');
+                        this.mercureSource = new EventSource(url);
+                        this.mercureSource.onmessage = () => {
+                            // A report changed — fetch the latest list from the API.
+                            // processReportsUpdate() diffs and only re-renders changed roads.
+                            this.fetchReports();
+                        };
+                        this.mercureSource.onerror = () => {
+                            // Hub unreachable — close and rely on the 30-second poll fallback.
+                            if (this.mercureSource) {
+                                this.mercureSource.close();
+                                this.mercureSource = null;
+                            }
+                        };
+                    } catch (e) {
+                        // Silently fall back to polling
+                    }
                 },
 
                 async fetchReports() {

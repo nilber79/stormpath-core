@@ -1,9 +1,22 @@
 {
 	frankenphp {
 		# Allow up to 200 concurrent PHP threads.
-		# Default is 2×CPU (24 on this host), which is easily exhausted when
-		# many users hold open SSE connections simultaneously.
 		max_threads 200
+	}
+}
+
+# Internal Mercure hub — bound to loopback only so it is never reachable from
+# outside the container.  A single hub instance is required so that events
+# PHP publishes on this port reach the browser clients that subscribe through
+# the main site block (which reverse-proxies /.well-known/mercure here).
+# Using a fixed internal HTTP port means PHP can always publish via
+# http://127.0.0.1:2099 regardless of whether the outer site uses HTTP or HTTPS.
+:2099 {
+	bind 127.0.0.1
+	mercure {
+		publisher_jwt {$MERCURE_JWT_SECRET} HS256
+		subscriber_jwt {$MERCURE_JWT_SECRET} HS256
+		anonymous
 	}
 }
 
@@ -14,17 +27,25 @@
 {$SERVER_NAME:localhost} {
 	root * /app/public
 
-	# Streaming endpoints must NOT be gzip-compressed or buffered
+	# Proxy Mercure SSE subscriptions to the internal hub.
+	# flush_interval -1 ensures SSE events are streamed immediately (no buffering).
+	# Clients subscribe here via EventSource; PHP publishes to 127.0.0.1:2099.
+	handle /.well-known/mercure* {
+		reverse_proxy 127.0.0.1:2099 {
+			flush_interval -1
+		}
+	}
+
+	# api.php must not be gzip-compressed or buffered (streaming JSON responses)
 	@streaming {
-		path /sse.php
 		path /api.php
 	}
 	handle @streaming {
 		php_server
 	}
 
-	# HTML: never cache — proxies (Cloudflare) must always revalidate so that
-	# updated script/style version strings in index.html reach browsers promptly.
+	# HTML: never cache — proxies must always revalidate so updated
+	# script/style version strings in index.html reach browsers promptly.
 	@html {
 		path *.html
 		path /
@@ -38,7 +59,7 @@
 	}
 	header @versioned Cache-Control "public, max-age=31536000, immutable"
 
-	# Everything else: compress static assets, serve files, process PHP
+	# Everything else: compress, serve files, process PHP
 	encode zstd br gzip
 	php_server
 }
