@@ -46,24 +46,38 @@ function rowToReport($row) {
 
 $db = getDb();
 
-// Send initial state: all current reports + latest change_id
-$stmt = $db->query("SELECT * FROM reports WHERE timestamp > datetime('now', '-3 days') ORDER BY timestamp DESC");
-$reports = [];
-while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-    $reports[] = rowToReport($row);
-}
-
 $lastChangeId = (int)$db->query("SELECT COALESCE(MAX(change_id), 0) FROM report_changes")->fetchColumn();
 
-echo "data: " . json_encode([
-    'type' => 'init',
-    'reports' => $reports,
-    'lastChangeId' => $lastChangeId
-]) . "\n\n";
+// On reconnect the browser sends Last-Event-ID; only send a full init on first connect.
+$resumeFromId = isset($_SERVER['HTTP_LAST_EVENT_ID']) ? (int)$_SERVER['HTTP_LAST_EVENT_ID'] : -1;
+
+if ($resumeFromId < 0) {
+    // First connect: send full initial state
+    $stmt = $db->query("SELECT * FROM reports WHERE timestamp > datetime('now', '-3 days') ORDER BY timestamp DESC");
+    $reports = [];
+    while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $reports[] = rowToReport($row);
+    }
+    echo "id: {$lastChangeId}\n";
+    echo "data: " . json_encode([
+        'type' => 'init',
+        'reports' => $reports,
+        'lastChangeId' => $lastChangeId
+    ]) . "\n\n";
+} else {
+    // Reconnect: resume delta stream from where we left off
+    $lastChangeId = $resumeFromId;
+}
+
 flush();
 
+// Recycle connection after 4 minutes so PHP worker threads are never permanently
+// held. The browser's EventSource reconnects automatically, passing Last-Event-ID
+// so the client picks up any missed deltas on reconnect.
+$deadline = time() + 240;
+
 // Poll for changes
-while (true) {
+while (time() < $deadline) {
     if (connection_aborted()) {
         break;
     }
@@ -89,12 +103,14 @@ while (true) {
 
             if (($row['change_type'] === 'add' || $row['change_type'] === 'update') && $row['id'] !== null) {
                 $eventType = $row['change_type'] === 'add' ? 'report_added' : 'report_updated';
+                echo "id: {$changeId}\n";
                 echo "data: " . json_encode([
                     'type' => $eventType,
                     'report' => rowToReport($row),
                     'changeId' => $changeId
                 ]) . "\n\n";
             } elseif ($row['change_type'] === 'delete') {
+                echo "id: {$changeId}\n";
                 echo "data: " . json_encode([
                     'type' => 'report_deleted',
                     'reportId' => $row['report_id'],
