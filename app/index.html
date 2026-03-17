@@ -26,7 +26,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Crimson+Pro:wght@400;600;700&family=DM+Sans:wght@400;500;700&display=swap" rel="stylesheet">
     
     <!-- Application Styles -->
-    <link rel="stylesheet" href="css/style.css?v=20260316-v1" />
+    <link rel="stylesheet" href="css/style.css?v=20260316-v6" />
 </head>
 <body>
     <div id="app" v-cloak>
@@ -132,10 +132,10 @@
                                     <span class="dropdown-action-icon">ℹ️</span>
                                     <span>About</span>
                                 </button>
-                                <button class="dropdown-action-btn" @click="showHelpModal = true; showInfoDropdown = false">
+                                <a class="dropdown-action-btn" href="https://stormpath.app/instructions" target="_blank" rel="noopener" @click="showInfoDropdown = false">
                                     <span class="dropdown-action-icon">📖</span>
                                     <span>Instructions</span>
-                                </button>
+                                </a>
                                 <button class="dropdown-action-btn" @click="showDisclaimerModal = true; showInfoDropdown = false">
                                     <span class="dropdown-action-icon">⚠️</span>
                                     <span>Disclaimer</span>
@@ -158,9 +158,6 @@
                                 <p class="dropdown-text">
                                     <strong>Community Reports:</strong> Road condition reports are submitted by community members and may not be verified.
                                     Always use caution and your best judgment when traveling.
-                                </p>
-                                <p class="dropdown-text">
-                                    <strong>Traffic and Accident Reporting:</strong> This application intentionally does not include traffic or accident reporting data. There are any number of existing applications that provide this data and/or capability. </strong>
                                 </p>
                                 <p class="dropdown-text mail-link">
                                     <a href="mailto:STORMPATH_CONTACT_EMAIL">Contact the developer</a>STORMPATH_GITHUB_LINK
@@ -190,14 +187,10 @@
                     <div class="nav-dropdown admin-dropdown" :class="{ active: showUserDropdown }">
                         <div class="dropdown-content">
                             <div class="dropdown-actions">
-                                <a class="dropdown-action-btn" href="/auth/setup-passkey.php">
-                                    <span class="dropdown-action-icon">🔑</span>
-                                    <span>Passkeys</span>
-                                </a>
-                                <a class="dropdown-action-btn" href="/auth/setup-totp.php">
-                                    <span class="dropdown-action-icon">🔐</span>
-                                    <span>Authenticator</span>
-                                </a>
+                                <button class="dropdown-action-btn" @click="openUserSettings(); showUserDropdown = false">
+                                    <span class="dropdown-action-icon">⚙️</span>
+                                    <span>Account Settings</span>
+                                </button>
                                 <template v-if="authUser.role === 'admin'">
                                     <div class="dropdown-divider"></div>
                                     <a class="dropdown-action-btn" href="/admin.php">
@@ -277,10 +270,10 @@
                             <span>ℹ️</span>
                             About
                         </button>
-                        <button class="mobile-info-btn" @click="openInstructions">
+                        <a class="mobile-info-btn" href="https://stormpath.app/instructions" target="_blank" rel="noopener" @click="closeMobileMenu()">
                             <span>📖</span>
                             Instructions
-                        </button>
+                        </a>
                         <button class="mobile-info-btn" @click="openDisclaimer">
                             <span>⚠️</span>
                             Disclaimer
@@ -302,14 +295,10 @@
                     </button>
                     <div class="mobile-submenu" v-if="showMobileAccount">
                         <div class="mobile-info-actions">
-                            <a class="mobile-info-btn" href="/auth/setup-passkey.php">
-                                <span>🔑</span>
-                                Passkeys
-                            </a>
-                            <a class="mobile-info-btn" href="/auth/setup-totp.php">
-                                <span>🔐</span>
-                                Authenticator
-                            </a>
+                            <button class="mobile-info-btn" @click="openUserSettings(); closeMobileMenu()">
+                                <span>⚙️</span>
+                                Account Settings
+                            </button>
                             <template v-if="authUser.role === 'admin'">
                                 <a class="mobile-info-btn" href="/admin.php">
                                     <span>📋</span>
@@ -532,6 +521,9 @@
                                 <span v-else>{{ part.text }}</span>
                             </template>
                         </div>
+                        <div v-if="authUser" class="mobile-sheet-actions">
+                            <button class="btn btn-secondary btn-sm" @click="openEditReport(mobileSheetReport); closeMobileSheet()">Edit Report</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -736,18 +728,21 @@
                     <button class="modal-close" @click="showAboutModal = false">&times;</button>
                 </div>
                 <div class="modal-content">
-                        <ul>
-                            <li><strong>View and report</strong> real-time road conditions in Morgan County, Tennessee.</li>
-                            <li><strong>Community-sourced</strong> enables rapid data collection immediately following natural disasters.</li>
-                            <li><strong>Aid</strong> community leaders, emergency management personnel, first responders, highway maintenance, and utilities in making informed decisions.</li>
-                            <li><strong>Facilitate</strong> strategic deployment of resources.</li>
-                            <li><strong>Reduce</strong> telephone or radio traffic to report road conditions, allowing E911 Dispatchers or Emergency Operations Center personnel to focus on other tasks.</li>
-                            <li><strong>Reduce</strong> need for first responders to be deployed to assess road conditions.</li>
-                        </ul>
-                        <p>
-                            <strong>Traffic and Accident Reporting:</strong> This application intentionally does not include traffic or accident reporting data. There are any number of existing applications that provide this data and/or capability.
+                        <p style="margin-bottom:0.875rem;line-height:1.6">
+                            StormPath is a community-powered road status platform that gives residents, travelers,
+                            and emergency personnel a shared, real-time view of road conditions.
                         </p>
-                        <p class="mail-link">
+                        <ul>
+                            <li><strong>View and report</strong> road conditions in real time — including snow, ice, fallen trees, downed power lines, accidents, road closures, and active helicopter landing zones.</li>
+                            <li><strong>Community-sourced</strong> data enables rapid situational awareness immediately following severe weather or other emergencies.</li>
+                            <li><strong>Confirmed reports</strong> from verified first responders are automatically marked with a trusted badge and can feed directly into Waze via the built-in CIFS partner feed.</li>
+                            <li><strong>First Responder Quick Report</strong> allows credentialed responders to submit a confirmed incident in two taps from the field.</li>
+                            <li><strong>Aid</strong> community leaders, emergency management, first responders, highway maintenance, and utilities in making informed, timely decisions.</li>
+                            <li><strong>Reduce</strong> telephone and radio traffic to report road conditions, freeing E911 dispatchers and EOC personnel to focus on critical tasks.</li>
+                            <li><strong>Role-based accounts</strong> — community users, verified first responders, and administrators — keep reporting trustworthy and controlled.</li>
+                            <li><strong>Real-time push updates</strong> via Mercure ensure every connected device sees new reports the moment they are submitted.</li>
+                        </ul>
+                        <p class="mail-link" style="margin-top:0.875rem">
                             <a href="mailto:STORMPATH_CONTACT_EMAIL">Contact the developer</a>STORMPATH_GITHUB_LINK
                         </p>
                         <p style="font-size: 0.8125rem; color: var(--color-text-soft); border-top: 1px solid var(--color-border); padding-top: 0.75rem; margin-top: 0.5rem;">
@@ -1106,6 +1101,81 @@
             </div>
         </div>
 
+        <!-- User Settings Modal -->
+        <div class="modal-overlay" v-if="showUserSettingsModal" @click.self="closeUserSettings">
+            <div class="modal modal-settings">
+                <div class="modal-header">
+                    <h3>Account Settings</h3>
+                    <button class="modal-close" @click="closeUserSettings">&times;</button>
+                </div>
+                <div class="modal-content">
+
+                    <!-- Profile section -->
+                    <div class="settings-section">
+                        <h4 class="settings-section-title">Profile</h4>
+                        <div class="form-group">
+                            <label class="form-label">Display Name</label>
+                            <input type="text" class="form-input" v-model="profileForm.display_name" maxlength="80" placeholder="Your display name">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Email <span style="font-weight:400;color:var(--color-text-soft)">(optional)</span></label>
+                            <input type="email" class="form-input" v-model="profileForm.email" placeholder="you@example.com">
+                        </div>
+                        <div v-if="profileError" class="settings-error">{{ profileError }}</div>
+                        <div v-if="profileSuccess" class="settings-success">{{ profileSuccess }}</div>
+                        <button class="btn btn-primary btn-sm" @click="submitUpdateProfile" :disabled="profileLoading">
+                            {{ profileLoading ? 'Saving…' : 'Save Profile' }}
+                        </button>
+                    </div>
+
+                    <div class="settings-divider"></div>
+
+                    <!-- Password section -->
+                    <div class="settings-section">
+                        <h4 class="settings-section-title">Change Password</h4>
+                        <div class="form-group">
+                            <label class="form-label">Current Password</label>
+                            <input type="password" class="form-input" v-model="profileForm.current_password" autocomplete="current-password">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">New Password</label>
+                            <input type="password" class="form-input" v-model="profileForm.new_password" autocomplete="new-password">
+                            <div class="field-hint" style="margin-top:0.25rem;font-size:0.75rem;color:var(--color-text-soft)">At least 10 characters</div>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Confirm New Password</label>
+                            <input type="password" class="form-input" v-model="profileForm.confirm_password" autocomplete="new-password">
+                        </div>
+                        <div v-if="passwordError" class="settings-error">{{ passwordError }}</div>
+                        <div v-if="passwordSuccess" class="settings-success">{{ passwordSuccess }}</div>
+                        <button class="btn btn-primary btn-sm" @click="submitChangePassword" :disabled="passwordLoading">
+                            {{ passwordLoading ? 'Saving…' : 'Change Password' }}
+                        </button>
+                    </div>
+
+                    <div class="settings-divider"></div>
+
+                    <!-- Security section -->
+                    <div class="settings-section">
+                        <h4 class="settings-section-title">Security</h4>
+                        <div class="settings-action-row">
+                            <a href="/auth/setup-passkey.php" class="btn btn-secondary btn-sm settings-action-btn">
+                                🔑 Passkeys
+                            </a>
+                            <a href="/auth/setup-totp.php" class="btn btn-secondary btn-sm settings-action-btn">
+                                🔐 Authenticator App
+                            </a>
+                        </div>
+                    </div>
+
+                </div>
+                <div class="modal-actions">
+                    <a href="/auth/logout.php" class="btn btn-danger">Sign Out</a>
+                    <button class="btn btn-secondary" @click="closeUserSettings">Close</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Foreground toast notifications (desktop, page visible) -->
         <div class="toast-container" v-if="toasts.length > 0">
             <div v-for="toast in toasts" :key="toast.id" class="toast">
@@ -1139,6 +1209,6 @@
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 
     <!-- Application Script -->
-    <script src="js/app.js?v=20260316-v1"></script>
+    <script src="js/app.js?v=20260316-v6"></script>
 </body>
 </html>

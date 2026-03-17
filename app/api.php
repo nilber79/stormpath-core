@@ -192,6 +192,7 @@ try {
                         'id'           => (int)$user['id'],
                         'username'     => $user['username'],
                         'display_name' => $user['display_name'] ?? $user['username'],
+                        'email'        => $user['email'] ?? '',
                         'role'         => $user['role'],
                     ],
                 ]);
@@ -275,9 +276,7 @@ try {
             break;
 
         case 'get_reports':
-            // Let Cloudflare cache this for 15 s so concurrent users share one origin hit.
-            // Browsers revalidate every request (max-age=0) but CDN serves from cache.
-            header('Cache-Control: public, s-maxage=15, max-age=0');
+            header('Cache-Control: no-cache, must-revalidate');
             $db = getDb();
             $stmt = $db->query("SELECT * FROM reports WHERE timestamp > datetime('now', '-3 days') ORDER BY timestamp DESC");
             $reports = [];
@@ -466,6 +465,8 @@ try {
             $updated = $db->prepare("SELECT * FROM reports WHERE id = ?");
             $updated->execute([$editId]);
             echo json_encode(['success' => true, 'report' => rowToReport($updated->fetch(PDO::FETCH_ASSOC))]);
+
+            publishMercureUpdate();
             break;
 
         case 'get_changes':
@@ -559,6 +560,48 @@ try {
                 flush();
             }
             exit(0);
+
+        case 'update_profile':
+            $user = getCurrentUser();
+            if (!$user) {
+                echo json_encode(['success' => false, 'error' => 'Not authenticated']);
+                break;
+            }
+            $db          = getDb();
+            $displayName = mb_substr(trim($postData['display_name'] ?? ''), 0, 80);
+            $email       = trim($postData['email'] ?? '');
+            $newPassword = $postData['new_password']     ?? '';
+            $curPassword = $postData['current_password'] ?? '';
+
+            if (!$displayName) {
+                echo json_encode(['success' => false, 'error' => 'Display name is required.']);
+                break;
+            }
+            if ($email && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                echo json_encode(['success' => false, 'error' => 'Invalid email address.']);
+                break;
+            }
+            if ($newPassword !== '') {
+                if (strlen($newPassword) < 10) {
+                    echo json_encode(['success' => false, 'error' => 'New password must be at least 10 characters.']);
+                    break;
+                }
+                $row = $db->prepare('SELECT password_hash FROM users WHERE id = ?');
+                $row->execute([$user['id']]);
+                $u = $row->fetch(PDO::FETCH_ASSOC);
+                if (!$u || !password_verify($curPassword, $u['password_hash'])) {
+                    echo json_encode(['success' => false, 'error' => 'Current password is incorrect.']);
+                    break;
+                }
+                $hash = password_hash($newPassword, PASSWORD_BCRYPT);
+                $db->prepare('UPDATE users SET display_name = ?, email = ?, password_hash = ? WHERE id = ?')
+                   ->execute([$displayName, $email ?: null, $hash, $user['id']]);
+            } else {
+                $db->prepare('UPDATE users SET display_name = ?, email = ? WHERE id = ?')
+                   ->execute([$displayName, $email ?: null, $user['id']]);
+            }
+            echo json_encode(['success' => true, 'display_name' => $displayName]);
+            break;
 
         default:
             throw new Exception('Invalid action');

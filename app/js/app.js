@@ -78,6 +78,10 @@
                     showEditReportModal: false,
                     editingReport: null,
                     editReport: { status: '', notes: '' },
+                    showUserSettingsModal: false,
+                    profileForm: { display_name: '', email: '', current_password: '', new_password: '', confirm_password: '' },
+                    profileError: '', profileSuccess: '', profileLoading: false,
+                    passwordError: '', passwordSuccess: '', passwordLoading: false,
                     lastUserInteraction: 0, // Timestamp of last map interaction
                     isProcessingClick: false, // Flag to prevent rapid duplicate clicks
                     customLoadingMessage: null, // Custom message for streaming progress
@@ -2088,6 +2092,87 @@
                     this.editReport = { status: '', notes: '' };
                 },
 
+                openUserSettings() {
+                    this.profileForm = {
+                        display_name: this.authUser?.display_name || '',
+                        email: this.authUser?.email || '',
+                        current_password: '',
+                        new_password: '',
+                        confirm_password: '',
+                    };
+                    this.profileError = ''; this.profileSuccess = '';
+                    this.passwordError = ''; this.passwordSuccess = '';
+                    this.showUserSettingsModal = true;
+                },
+
+                closeUserSettings() {
+                    this.showUserSettingsModal = false;
+                },
+
+                async submitUpdateProfile() {
+                    this.profileError = ''; this.profileSuccess = '';
+                    if (!this.profileForm.display_name.trim()) {
+                        this.profileError = 'Display name is required.'; return;
+                    }
+                    this.profileLoading = true;
+                    try {
+                        const res = await fetch('/api.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action: 'update_profile',
+                                display_name: this.profileForm.display_name.trim(),
+                                email: this.profileForm.email.trim(),
+                            }),
+                        });
+                        const data = await res.json();
+                        if (!data.success) { this.profileError = data.error || 'Update failed.'; return; }
+                        this.authUser = { ...this.authUser, display_name: data.display_name };
+                        this.profileSuccess = 'Profile saved.';
+                    } catch (e) {
+                        this.profileError = 'Network error. Please try again.';
+                    } finally {
+                        this.profileLoading = false;
+                    }
+                },
+
+                async submitChangePassword() {
+                    this.passwordError = ''; this.passwordSuccess = '';
+                    if (!this.profileForm.new_password) {
+                        this.passwordError = 'Enter a new password.'; return;
+                    }
+                    if (this.profileForm.new_password.length < 10) {
+                        this.passwordError = 'New password must be at least 10 characters.'; return;
+                    }
+                    if (this.profileForm.new_password !== this.profileForm.confirm_password) {
+                        this.passwordError = 'Passwords do not match.'; return;
+                    }
+                    this.passwordLoading = true;
+                    try {
+                        const res = await fetch('/api.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action: 'update_profile',
+                                display_name: this.profileForm.display_name.trim() || this.authUser?.display_name,
+                                email: this.profileForm.email.trim(),
+                                current_password: this.profileForm.current_password,
+                                new_password: this.profileForm.new_password,
+                            }),
+                        });
+                        const data = await res.json();
+                        if (!data.success) { this.passwordError = data.error || 'Update failed.'; return; }
+                        this.profileForm.current_password = '';
+                        this.profileForm.new_password = '';
+                        this.profileForm.confirm_password = '';
+                        this.passwordSuccess = 'Password changed.';
+                    } catch (e) {
+                        this.passwordError = 'Network error. Please try again.';
+                    } finally {
+                        this.passwordLoading = false;
+                    }
+                },
+
                 async submitEditReport() {
                     if (!this.editingReport || !this.editReport.status) return;
                     try {
@@ -2107,6 +2192,8 @@
                         const idx = this.reports.findIndex(r => r.id === this.editingReport.id);
                         if (idx !== -1) {
                             this.reports[idx] = { ...this.reports[idx], ...data.report };
+                            const road = this.allRoads.find(r => r.id === this.reports[idx].road_id);
+                            if (road) this.renderReportSegments(road);
                         }
                         this.closeEditReport();
                     } catch (err) {
