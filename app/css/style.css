@@ -2268,6 +2268,24 @@
     text-decoration: none;
 }
 
+/* ── First Responder status badges (settings modal) ────────────────── */
+.fr-status-badge {
+    display: inline-block;
+    padding: 0.3rem 0.75rem;
+    border-radius: 1rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-bottom: 0.25rem;
+}
+.fr-badge-confirmed { background: #d1fae5; color: #065f46; }
+.fr-badge-idme      { background: #dbeafe; color: #1e40af; }
+.fr-badge-pending   { background: #fef3c7; color: #92400e; }
+.settings-hint {
+    font-size: 0.85rem;
+    color: var(--color-text-soft);
+    margin: 0 0 0.5rem;
+}
+
 /* ── form-input (used in settings modal) ───────────────────────────── */
 .form-input {
     width: 100%;

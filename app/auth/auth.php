@@ -72,7 +72,8 @@ function getCurrentUser(): ?array
         return null;
     }
     $stmt = getDb()->prepare(
-        "SELECT id, username, email, display_name, role, status, totp_enabled
+        "SELECT id, username, email, display_name, role, status, totp_enabled,
+                fr_claim, fr_agency, fr_role, fr_identifier, fr_idme_verified
            FROM users WHERE id = ? AND status = 'active'"
     );
     $stmt->execute([$userId]);

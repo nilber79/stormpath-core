@@ -1155,6 +1155,54 @@
 
                     <div class="settings-divider"></div>
 
+                    <!-- First Responder section -->
+                    <div class="settings-section" v-if="authUser?.role !== 'admin'">
+                        <h4 class="settings-section-title">First Responder</h4>
+
+                        <!-- Confirmed -->
+                        <div v-if="authUser?.role === 'first_responder'" class="fr-status-badge fr-badge-confirmed">&#10003; First Responder &ndash; Confirmed</div>
+                        <!-- ID.me sub-badge -->
+                        <div v-if="authUser?.fr_idme_verified" class="fr-status-badge fr-badge-idme" style="margin-top:0.5rem">&#10003; Verified via ID.me</div>
+
+                        <!-- Pending claim -->
+                        <div v-else-if="authUser?.fr_claim" class="fr-status-badge fr-badge-pending">&#8987; Claim submitted &ndash; pending admin review</div>
+
+                        <!-- No claim yet -->
+                        <p v-else class="settings-hint">Are you a first responder? Submit your information below to request First Responder access.</p>
+
+                        <!-- Editable info form (all non-admin users) -->
+                        <div class="form-group" style="margin-top:1rem">
+                            <label class="form-label">Agency / Organization</label>
+                            <input type="text" class="form-input" v-model="frForm.fr_agency" maxlength="120" placeholder="e.g. Morgan County EMS">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Role</label>
+                            <select class="form-input" v-model="frForm.fr_role">
+                                <option value="">Select role&hellip;</option>
+                                <option value="fire">Fire</option>
+                                <option value="ems">EMS / Medical</option>
+                                <option value="law">Law Enforcement</option>
+                                <option value="em">Emergency Management</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Call Sign / ID <span style="font-weight:400;color:var(--color-text-soft)">(optional)</span></label>
+                            <input type="text" class="form-input" v-model="frForm.fr_identifier" maxlength="120" placeholder="Station number, call sign, or badge number">
+                        </div>
+                        <div v-if="frError" class="settings-error">{{ frError }}</div>
+                        <div v-if="frSuccess" class="settings-success">{{ frSuccess }}</div>
+                        <div class="settings-action-row">
+                            <button class="btn btn-primary btn-sm" @click="submitFrClaim" :disabled="frLoading">
+                                {{ frLoading ? 'Saving&hellip;' : (authUser?.fr_claim || authUser?.role === 'first_responder') ? 'Update Information' : 'Request First Responder Access' }}
+                            </button>
+                            <a v-if="idmeEnabled && authUser?.fr_claim && !authUser?.fr_idme_verified"
+                               href="/auth/idme-start.php" class="btn btn-secondary btn-sm">Verify with ID.me</a>
+                        </div>
+                    </div>
+
+                    <div class="settings-divider"></div>
+
                     <!-- Security section -->
                     <div class="settings-section">
                         <h4 class="settings-section-title">Security</h4>

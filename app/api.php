@@ -166,17 +166,23 @@ try {
             $user = getCurrentUser();
             if ($user) {
                 echo json_encode([
-                    'success'  => true,
-                    'user'     => [
-                        'id'           => (int)$user['id'],
-                        'username'     => $user['username'],
-                        'display_name' => $user['display_name'] ?? $user['username'],
-                        'email'        => $user['email'] ?? '',
-                        'role'         => $user['role'],
+                    'success'      => true,
+                    'idme_enabled' => (bool)getenv('IDME_CLIENT_ID'),
+                    'user'         => [
+                        'id'               => (int)$user['id'],
+                        'username'         => $user['username'],
+                        'display_name'     => $user['display_name'] ?? $user['username'],
+                        'email'            => $user['email'] ?? '',
+                        'role'             => $user['role'],
+                        'fr_claim'         => (bool)($user['fr_claim'] ?? false),
+                        'fr_agency'        => $user['fr_agency'] ?? '',
+                        'fr_role'          => $user['fr_role'] ?? '',
+                        'fr_identifier'    => $user['fr_identifier'] ?? '',
+                        'fr_idme_verified' => (bool)($user['fr_idme_verified'] ?? false),
                     ],
                 ]);
             } else {
-                echo json_encode(['success' => true, 'user' => null]);
+                echo json_encode(['success' => true, 'user' => null, 'idme_enabled' => false]);
             }
             break;
 
@@ -564,6 +570,34 @@ try {
                 flush();
             }
             exit(0);
+
+        case 'update_fr_claim':
+            $user = getCurrentUser();
+            if (!$user) {
+                echo json_encode(['success' => false, 'error' => 'Not authenticated']);
+                break;
+            }
+            $frAgency     = mb_substr(trim($postData['fr_agency'] ?? ''), 0, 120);
+            $frRole       = $postData['fr_role'] ?? '';
+            $frIdentifier = mb_substr(trim($postData['fr_identifier'] ?? ''), 0, 120);
+            $validRoles   = ['fire', 'ems', 'law', 'em', 'other'];
+            if (!$frAgency) {
+                echo json_encode(['success' => false, 'error' => 'Agency / organization is required.']);
+                break;
+            }
+            if (!in_array($frRole, $validRoles, true)) {
+                echo json_encode(['success' => false, 'error' => 'Please select a valid role.']);
+                break;
+            }
+            getDb()->prepare('UPDATE users SET fr_claim=1, fr_agency=?, fr_role=?, fr_identifier=? WHERE id=?')
+                   ->execute([$frAgency, $frRole, $frIdentifier ?: null, $user['id']]);
+            echo json_encode([
+                'success'      => true,
+                'fr_agency'    => $frAgency,
+                'fr_role'      => $frRole,
+                'fr_identifier'=> $frIdentifier,
+            ]);
+            break;
 
         case 'update_profile':
             $user = getCurrentUser();

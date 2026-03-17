@@ -82,6 +82,9 @@
                     profileForm: { display_name: '', email: '', current_password: '', new_password: '', confirm_password: '' },
                     profileError: '', profileSuccess: '', profileLoading: false,
                     passwordError: '', passwordSuccess: '', passwordLoading: false,
+                    frForm: { fr_agency: '', fr_role: '', fr_identifier: '' },
+                    frError: '', frSuccess: '', frLoading: false,
+                    idmeEnabled: false,
                     lastUserInteraction: 0, // Timestamp of last map interaction
                     isProcessingClick: false, // Flag to prevent rapid duplicate clicks
                     customLoadingMessage: null, // Custom message for streaming progress
@@ -2124,13 +2127,49 @@
                         new_password: '',
                         confirm_password: '',
                     };
+                    this.frForm = {
+                        fr_agency:     this.authUser?.fr_agency     || '',
+                        fr_role:       this.authUser?.fr_role       || '',
+                        fr_identifier: this.authUser?.fr_identifier || '',
+                    };
                     this.profileError = ''; this.profileSuccess = '';
                     this.passwordError = ''; this.passwordSuccess = '';
+                    this.frError = ''; this.frSuccess = '';
                     this.showUserSettingsModal = true;
                 },
 
                 closeUserSettings() {
                     this.showUserSettingsModal = false;
+                },
+
+                async submitFrClaim() {
+                    this.frError = ''; this.frSuccess = '';
+                    if (!this.frForm.fr_agency.trim()) { this.frError = 'Agency / organization is required.'; return; }
+                    if (!this.frForm.fr_role) { this.frError = 'Please select a role.'; return; }
+                    this.frLoading = true;
+                    try {
+                        const res = await fetch('/api.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                action:        'update_fr_claim',
+                                fr_agency:     this.frForm.fr_agency.trim(),
+                                fr_role:       this.frForm.fr_role,
+                                fr_identifier: this.frForm.fr_identifier.trim(),
+                            }),
+                        });
+                        const data = await res.json();
+                        if (data.success) {
+                            this.authUser = { ...this.authUser, fr_claim: true,
+                                fr_agency: data.fr_agency, fr_role: data.fr_role, fr_identifier: data.fr_identifier };
+                            this.frSuccess = this.authUser.role === 'first_responder'
+                                ? 'Information updated.'
+                                : 'Request submitted. An admin will review your claim.';
+                        } else {
+                            this.frError = data.error || 'Could not save.';
+                        }
+                    } catch { this.frError = 'Network error. Please try again.'; }
+                    finally { this.frLoading = false; }
                 },
 
                 async submitUpdateProfile() {
@@ -2688,7 +2727,7 @@
                             body: JSON.stringify({ action: 'auth_check' }),
                         });
                         const d = await res.json();
-                        if (d.success) this.authUser = d.user;
+                        if (d.success) { this.authUser = d.user; this.idmeEnabled = !!d.idme_enabled; }
                         if (this.authUser) this.loadServerPreferences();
                     } catch {}
                 },
