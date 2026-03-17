@@ -13,6 +13,7 @@
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/auth/auth.php';
+require_once __DIR__ . '/mercure.php';
 
 $currentUser = requireRole('admin');
 
@@ -48,8 +49,8 @@ if ($action === 'update_status') {
     $status = $_POST['status']    ?? '';
     if ($id && in_array($status, $valid_statuses, true)) {
         $pdo->prepare("UPDATE reports SET status = ? WHERE id = ?")->execute([$status, $id]);
-        // Notify SSE clients of the change
         $pdo->prepare("INSERT INTO report_changes (change_type, report_id) VALUES ('update', ?)")->execute([$id]);
+        publishMercureUpdate();
     }
     header('Location: admin.php?tab=reports');
     exit;
@@ -59,7 +60,7 @@ if ($action === 'delete_report') {
     $id = $_POST['report_id'] ?? '';
     if ($id) {
         $pdo->prepare("DELETE FROM reports WHERE id = ?")->execute([$id]);
-        // report_changes trigger fires automatically on DELETE
+        publishMercureUpdate();
     }
     header('Location: admin.php?tab=reports');
     exit;

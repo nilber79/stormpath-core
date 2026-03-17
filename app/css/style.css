@@ -400,6 +400,7 @@
             font-size: 0.8125rem;
             color: var(--color-text-soft);
             line-height: 1.5;
+            white-space: pre-wrap;
             max-height: 0;
             overflow: hidden;
             opacity: 0;

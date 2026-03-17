@@ -707,6 +707,11 @@
 
                     // Add click handler
                     this.map.on('click', 'roads-click', (e) => {
+                        // Don't handle road clicks when picking a location for notes
+                        if (this.locationPickMode) {
+                            return;
+                        }
+
                         // Don't handle road clicks when in segment selection mode
                         if (this.selectionMode) {
                             return;
@@ -763,10 +768,12 @@
 
                     // Change cursor on hover
                     this.map.on('mouseenter', 'roads-click', () => {
+                        if (this.locationPickMode || this.frMode) return;
                         this.map.getCanvas().style.cursor = 'pointer';
                     });
 
                     this.map.on('mouseleave', 'roads-click', () => {
+                        if (this.locationPickMode || this.frMode) return;
                         this.map.getCanvas().style.cursor = '';
                     });
 
@@ -812,8 +819,19 @@
 
                     if (roadReports.length === 0) return;
 
-                    // Sort by timestamp, most recent first
-                    roadReports.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+                    // Sort by severity ascending so the most severe/confirmed report
+                    // is added last and therefore rendered on top by MapLibre.
+                    const statusPriority = {
+                        'clear': 1, 'snow': 2, 'ice-patches': 2,
+                        'blocked-power': 3, 'blocked-tree': 3,
+                        'road-closure': 4, 'accident': 4, 'lz': 4,
+                    };
+                    roadReports.sort((a, b) => {
+                        const pa = (statusPriority[a.status] ?? 2) + (a.confirmed ? 10 : 0);
+                        const pb = (statusPriority[b.status] ?? 2) + (b.confirmed ? 10 : 0);
+                        if (pa !== pb) return pa - pb;                  // lower priority first
+                        return new Date(a.timestamp) - new Date(b.timestamp); // older first on tie
+                    });
 
                     // Get weight based on zoom (thicker for reported segments)
                     // Make thicker on mobile for better touch targets
@@ -881,6 +899,9 @@
 
                             // Add click handler directly to the visible layer
                             this.map.on('click', layerKey, (e) => {
+                                if (this.locationPickMode) {
+                                    return;
+                                }
                                 if (this.selectionMode) {
                                     return;
                                 }
@@ -892,10 +913,12 @@
 
                             // Change cursor on hover
                             this.map.on('mouseenter', layerKey, () => {
+                                if (this.locationPickMode) return;
                                 this.map.getCanvas().style.cursor = 'pointer';
                             });
 
                             this.map.on('mouseleave', layerKey, () => {
+                                if (this.locationPickMode) return;
                                 this.map.getCanvas().style.cursor = '';
                             });
 
@@ -1522,7 +1545,7 @@
                                     this.map.setPaintProperty(layerId, 'line-width', 10);
                                     this.map.setPaintProperty(layerId, 'line-opacity', 0.6);
                                 }
-                                this.map.getCanvas().style.cursor = 'pointer';
+                                if (!this.locationPickMode) this.map.getCanvas().style.cursor = 'pointer';
                             });
 
                             this.map.on('mouseleave', layerId, () => {
@@ -2043,6 +2066,7 @@
 
                         if (data.success) {
                             const newReport = data.report || { ...report, id: `report_${Date.now()}`, confirmed: 1 };
+                            this.reports = this.reports.filter(r => r.road_id !== road.id);
                             this.reports.push(newReport);
 
                             // Flash feedback on map
@@ -2395,32 +2419,6 @@
                         segmentIds = this.newReport.combinedSegment.ids;
                     }
 
-                    // Check for duplicate/conflicting reports (check ALL reports, including "clear")
-                    const roadReports = this.reports.filter(r => r.road_id === reportingRoad.id);
-
-                    if (this.newReport.segment === 'entire') {
-                        // If reporting entire road, check if ANY segment already has a report
-                        if (roadReports.length > 0) {
-                            alert(`This road already has existing reports on specific segments. Please report individual segments instead.`);
-                            return;
-                        }
-                    } else if (segmentIds) {
-                        // Check if any of these segment IDs already have reports
-                        const conflictingReport = roadReports.find(r => {
-                            if (r.segment === 'entire') return true;
-                            if (r.segmentIds) {
-                                // Check if any segment ID overlaps
-                                return r.segmentIds.some(id => segmentIds.includes(id));
-                            }
-                            return false;
-                        });
-
-                        if (conflictingReport) {
-                            alert(`One or more of these segments already have reports. Please update or delete the existing report first.`);
-                            return;
-                        }
-                    }
-
                     // Validate notes for inappropriate content
                     if (this.newReport.notes) {
                         const validation = this.validateNotes(this.newReport.notes);
@@ -2463,9 +2461,19 @@
                         const data = await response.json();
 
                         if (data.success) {
-                            // Optimistically add the report to local state immediately
-                            // Use the report object from the server response (has server-assigned ID)
                             const newReport = data.report || { ...report, id: `report_${Date.now()}` };
+                            if (this.newReport.segment === 'entire') {
+                                // Entire-road report replaces everything on that road
+                                this.reports = this.reports.filter(r => r.road_id !== reportingRoad.id);
+                            } else if (segmentIds) {
+                                // Segment-specific: remove reports with overlapping segment_ids
+                                const newIdSet = new Set(segmentIds);
+                                this.reports = this.reports.filter(r => {
+                                    if (r.road_id !== reportingRoad.id) return true;
+                                    if (!r.segmentIds) return true; // entire-road report — keep
+                                    return !r.segmentIds.some(id => newIdSet.has(id));
+                                });
+                            }
                             this.reports.push(newReport);
 
                             // Show immediate visual feedback - flash the segment

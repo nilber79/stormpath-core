@@ -22,28 +22,7 @@ if (!file_exists($dataDir)) {
  * connected browser regardless of whether TLS is used on the public endpoint.
  * Silently skips if MERCURE_JWT_SECRET is not set (e.g. very old deployments).
  */
-function publishMercureUpdate(): void {
-    $secret = getenv('MERCURE_JWT_SECRET') ?: '';
-    if (!$secret) return;
-
-    // Minimal HS256 JWT granting publish rights to all topics.
-    $h = rtrim(strtr(base64_encode('{"typ":"JWT","alg":"HS256"}'), '+/', '-_'), '=');
-    $p = rtrim(strtr(base64_encode('{"mercure":{"publish":["*"]}}'), '+/', '-_'), '=');
-    $s = rtrim(strtr(base64_encode(hash_hmac('sha256', "$h.$p", $secret, true)), '+/', '-_'), '=');
-    $jwt = "$h.$p.$s";
-
-    $body = http_build_query(['topic' => 'stormpath/reports', 'data' => '{"type":"update"}']);
-    $ctx  = stream_context_create(['http' => [
-        'method'        => 'POST',
-        'header'        => "Authorization: Bearer $jwt\r\n"
-                         . "Content-Type: application/x-www-form-urlencoded\r\n"
-                         . 'Content-Length: ' . strlen($body),
-        'content'       => $body,
-        'timeout'       => 2,
-        'ignore_errors' => true,
-    ]]);
-    @file_get_contents('http://127.0.0.1:2099/.well-known/mercure', false, $ctx);
-}
+require_once __DIR__ . '/mercure.php';
 
 /**
  * Convert a database row to the report object format the frontend expects
@@ -347,6 +326,31 @@ try {
             if ($currentUser) {
                 $role = $currentUser['role'] ?? 'user';
                 if (($roleHierarchy[$role] ?? 0) >= 2) $confirmed = 1;
+            }
+
+            // Replace conflicting reports for this road.
+            // Entire-road report → replaces everything on that road.
+            // Segment-specific report → replaces only reports whose segment_ids overlap;
+            //   entire-road reports and non-overlapping segments are left intact.
+            if (($report['segment'] ?? '') === 'entire') {
+                $db->prepare('DELETE FROM reports WHERE road_id = ?')->execute([$report['road_id']]);
+            } elseif (!empty($report['segmentIds']) && is_array($report['segmentIds'])) {
+                $existing = $db->prepare(
+                    "SELECT id, segment, segment_ids FROM reports WHERE road_id = ? AND segment != 'entire'"
+                );
+                $existing->execute([$report['road_id']]);
+                $newIds = array_flip($report['segmentIds']); // use as hash for fast lookup
+                foreach ($existing->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                    $existingIds = $row['segment_ids'] ? json_decode($row['segment_ids'], true) : [];
+                    if (!is_array($existingIds)) continue;
+                    // Delete this existing report if any of its segment_ids overlap with the new report
+                    foreach ($existingIds as $sid) {
+                        if (isset($newIds[$sid])) {
+                            $db->prepare('DELETE FROM reports WHERE id = ?')->execute([$row['id']]);
+                            break;
+                        }
+                    }
+                }
             }
 
             $stmt = $db->prepare('
