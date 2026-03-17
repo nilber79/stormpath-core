@@ -204,6 +204,16 @@ if (!in_array('fr_idme_verified', \$userCols)) {
     \$db->exec('ALTER TABLE users ADD COLUMN fr_idme_verified INTEGER DEFAULT 0');
     echo \"[entrypoint] Added fr_idme_verified column to users.\\n\";
 }
+// SQLite-backed sessions — persist across container restarts
+\$db->exec('
+    CREATE TABLE IF NOT EXISTS sessions (
+        id      TEXT    PRIMARY KEY,
+        data    TEXT    NOT NULL DEFAULT \\'\\',
+        expires INTEGER NOT NULL
+    )
+');
+\$db->exec('CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions (expires)');
+echo \"[entrypoint] Sessions table ready.\\n\";
 \$adminUser = getenv('ADMIN_USERNAME') ?: 'admin';
 \$adminPass = getenv('ADMIN_PASSWORD') ?: '';
 \$userCount = (int)\$db->query('SELECT COUNT(*) FROM users')->fetchColumn();

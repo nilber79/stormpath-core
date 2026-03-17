@@ -8,12 +8,50 @@ require_once __DIR__ . '/../db.php';
 const SP_SESSION_NAME     = 'sp_sess';
 const SP_SESSION_LIFETIME = 86400 * 30; // 30 days
 
+/**
+ * SQLite-backed session handler so sessions survive container restarts.
+ * Reads/writes the `sessions` table in reports.db (persistent volume).
+ */
+class SqliteSessionHandler implements SessionHandlerInterface
+{
+    public function open(string $path, string $name): bool  { return true; }
+    public function close(): bool                           { return true; }
+
+    public function read(string $id): string|false
+    {
+        $stmt = getDb()->prepare('SELECT data FROM sessions WHERE id = ? AND expires > ?');
+        $stmt->execute([$id, time()]);
+        return $stmt->fetchColumn() ?: '';
+    }
+
+    public function write(string $id, string $data): bool
+    {
+        getDb()->prepare('INSERT OR REPLACE INTO sessions (id, data, expires) VALUES (?, ?, ?)')
+               ->execute([$id, $data, time() + SP_SESSION_LIFETIME]);
+        return true;
+    }
+
+    public function destroy(string $id): bool
+    {
+        getDb()->prepare('DELETE FROM sessions WHERE id = ?')->execute([$id]);
+        return true;
+    }
+
+    public function gc(int $max_lifetime): int|false
+    {
+        $stmt = getDb()->prepare('DELETE FROM sessions WHERE expires < ?');
+        $stmt->execute([time()]);
+        return $stmt->rowCount();
+    }
+}
+
 function spStartSession(): void
 {
     if (session_status() === PHP_SESSION_NONE) {
+        session_set_save_handler(new SqliteSessionHandler(), true);
         session_name(SP_SESSION_NAME);
         session_set_cookie_params([
-            'lifetime' => 0,          // browser-session cookie (persisted by session_id in DB future)
+            'lifetime' => 0,
             'path'     => '/',
             'secure'   => isset($_SERVER['HTTPS']),
             'httponly' => true,
