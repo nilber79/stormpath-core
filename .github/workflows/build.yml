@@ -3,6 +3,11 @@ name: Build & Publish
 on:
   push:
     branches: [main]
+  # Pull requests into main build everything but publish nothing.  These runs
+  # produce the "Build core image" / "Build <area>" checks that main's branch
+  # protection requires before a PR can merge.
+  pull_request:
+    branches: [main]
   workflow_dispatch:
     inputs:
       area:
@@ -22,6 +27,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - uses: docker/login-action@v4
+        if: github.event_name != 'pull_request'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -33,7 +39,7 @@ jobs:
         with:
           context: .
           file: docker/Dockerfile.core
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ghcr.io/${{ github.repository_owner }}/stormpath-core:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -73,6 +79,14 @@ jobs:
     permissions:
       contents: read
       packages: write
+    # Only used on pull requests: Dockerfile.area builds FROM the core image,
+    # and a PR must be tested against its own core, not the published one.  The
+    # PR's core is pushed to this job-local registry instead of GHCR.
+    services:
+      registry:
+        image: registry:3.1.2
+        ports:
+          - 5000:5000
 
     steps:
       - uses: actions/checkout@v6
@@ -140,12 +154,26 @@ jobs:
 
       # ── Docker build & push ───────────────────────────────────────────────────
       - uses: docker/login-action@v4
+        if: github.event_name != 'pull_request'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # network=host lets the builder reach the local registry on PR runs
       - uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
+
+      - name: Build PR core image (local registry)
+        if: github.event_name == 'pull_request'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile.core
+          push: true
+          tags: localhost:5000/stormpath-core:pr
+          cache-from: type=gha
 
       - name: Derive image tag
         id: tag
@@ -157,10 +185,12 @@ jobs:
         with:
           context: .
           file: docker/Dockerfile.area
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           build-args: |
             AREA=${{ matrix.area }}
             GHCR_ORG=${{ github.repository_owner }}
+          # On PRs, point Dockerfile.area's FROM at the PR's core in the local registry
+          build-contexts: ${{ github.event_name == 'pull_request' && format('ghcr.io/{0}/stormpath-core:latest=docker-image://localhost:5000/stormpath-core:pr', github.repository_owner) || '' }}
           tags: ghcr.io/${{ github.repository_owner }}/stormpath:${{ steps.tag.outputs.val }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

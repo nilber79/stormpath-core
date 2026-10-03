@@ -11,7 +11,7 @@
  *   - Manage user accounts
  */
 
-require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/common.php';
 require_once __DIR__ . '/auth/auth.php';
 require_once __DIR__ . '/mercure.php';
 
@@ -39,8 +39,7 @@ try {
 
 // ── Actions ───────────────────────────────────────────────────────────────
 
-$valid_statuses = ['clear', 'snow', 'ice-patches', 'blocked-tree', 'blocked-power',
-                  'accident', 'road-closure', 'lz'];
+$valid_statuses = SP_REPORT_STATUSES;
 $action         = $_POST['action'] ?? '';
 $redirect_tab   = 'reports';
 
@@ -94,9 +93,10 @@ $active_tab = in_array($_GET['tab'] ?? 'reports', ['reports', 'ip', 'merge_issue
     ? ($_GET['tab'] ?? 'reports') : 'reports';
 
 // Show reports from the last 30 days so admins can see recent history
+// (api.php keeps reports for SP_REPORT_RETENTION, past the 3-day public window)
 $reports = $pdo->query("
     SELECT * FROM reports
-    WHERE datetime(timestamp) > datetime('now', '-30 days')
+    WHERE timestamp > " . spIsoAgo(SP_REPORT_RETENTION) . "
     ORDER BY timestamp DESC
 ")->fetchAll();
 
@@ -151,9 +151,9 @@ $status_colors = [
     'lz'            => '#f59e0b',
 ];
 
-// Is this report still within the 3-day public window?
+// Is this report still within the public window?
 function is_active(string $ts): bool {
-    return strtotime($ts) > strtotime('-3 days');
+    return strtotime($ts) > strtotime(SP_REPORT_WINDOW);
 }
 
 ?>

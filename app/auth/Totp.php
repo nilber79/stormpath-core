@@ -41,17 +41,26 @@ class Totp
      */
     public static function verify(string $secret, string $code): bool
     {
+        return self::matchStep($secret, $code) !== null;
+    }
+
+    /**
+     * Like verify(), but returns the time step the code matched (null if none)
+     * so callers can refuse a code that was already used.
+     */
+    public static function matchStep(string $secret, string $code): ?int
+    {
         if (!preg_match('/^\d{6}$/', $code)) {
-            return false;
+            return null;
         }
         $key  = self::base32Decode($secret);
         $step = (int) floor(time() / self::PERIOD);
         for ($i = -self::WINDOW; $i <= self::WINDOW; $i++) {
             if (hash_equals(self::hotp($key, $step + $i), $code)) {
-                return true;
+                return $step + $i;
             }
         }
-        return false;
+        return null;
     }
 
     // ── Internal helpers ────────────────────────────────────────────────────

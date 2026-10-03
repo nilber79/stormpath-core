@@ -14,7 +14,7 @@
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/auth.php';
 
-if (session_status() === PHP_SESSION_NONE) session_start();
+spStartSession();
 
 $clientId     = getenv('IDME_CLIENT_ID')     ?: '';
 $clientSecret = getenv('IDME_CLIENT_SECRET') ?: '';
@@ -129,13 +129,17 @@ if (!$responderVerified) {
 
 // ── Mark the StormPath user as verified and activate their FR role ─────────────
 $db = getDb();
-$db->prepare(
+$verify = $db->prepare(
     "UPDATE users
      SET fr_idme_verified = 1,
-         role   = 'first_responder',
+         role   = CASE WHEN role = 'admin' THEN role ELSE 'first_responder' END,
          status = 'active'
      WHERE id = ? AND fr_claim = 1"
-)->execute([$uid]);
+);
+$verify->execute([$uid]);
+if ($verify->rowCount() === 0) {
+    idmeError('No first-responder claim was found on this account. Add one in your account settings, then verify again.');
+}
 
 // ── Log them in immediately ───────────────────────────────────────────────────
 unset($_SESSION['sp_idme_verify_uid']);

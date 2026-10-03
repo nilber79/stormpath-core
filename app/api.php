@@ -1,10 +1,9 @@
 <?php
 ini_set('display_errors', 0);
 ini_set('memory_limit', '64M');
-set_time_limit(300);
 header('Content-Type: application/json');
 
-require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/common.php';
 require_once __DIR__ . '/auth/auth.php';
 
 $dataDir = __DIR__ . '/data';
@@ -40,7 +39,19 @@ function rowToReport($row) {
         'timestamp' => $row['timestamp'],
         'segmentIds' => $row['segment_ids'] ? json_decode($row['segment_ids'], true) : null,
         'confirmed' => (int)($row['confirmed'] ?? 0),
+        'submitted_by' => isset($row['submitted_by']) ? (int)$row['submitted_by'] : null,
     ];
+}
+
+/**
+ * Reports can be edited/deleted by their author or by a first responder / admin.
+ */
+function canModifyReport(?array $user, array $row): bool {
+    if (!$user) {
+        return false;
+    }
+    return spRoleLevel($user) >= SP_ROLE_LEVELS['first_responder']
+        || ($row['submitted_by'] !== null && (int)$row['submitted_by'] === (int)$user['id']);
 }
 
 /**
@@ -51,29 +62,42 @@ function filterInappropriateContent($text) {
         return $text;
     }
 
-    $badPatterns = [
-        '/\bf+[\W_]*u+[\W_]*c+[\W_]*k+/i',
-        '/\bs+[\W_]*h+[\W_]*i+[\W_]*t+/i',
-        '/\bb+[\W_]*i+[\W_]*t+[\W_]*c+[\W_]*h+/i',
-        '/\ba+[\W_]*s+[\W_]*s+[\W_]*h+[\W_]*o+[\W_]*l+[\W_]*e+/i',
-        '/\bd+[\W_]*a+[\W_]*m+[\W_]*n+/i',
-        '/\bh+[\W_]*e+[\W_]*l+[\W_]*l+/i',
-        '/\bc+[\W_]*r+[\W_]*a+[\W_]*p+/i',
+    // Letters may be separated by punctuation (f.u.c.k) but not by spaces, and
+    // the word must end at a word boundary — otherwise "Hello", "Hellwig Rd",
+    // "crappie" and "it's hit" are all rejected.
+    $sep = '[^\w\s]*';
+    $badWords = [
+        'f+%su+%sc+%sk+(?:ing|ed|er|s)?',
+        's+%sh+%si+%st+(?:ty|s)?',
+        'b+%si+%st+%sc+%sh+(?:es)?',
+        'a+%ss+%ss+%sh+%so+%sl+%se+s?',
+        'd+%sa+%sm+%sn+(?:ed|it)?',
+        'h+%se+%sl+%sl+',
+        'c+%sr+%sa+%sp+(?:py|s)?',
     ];
 
-    foreach ($badPatterns as $pattern) {
+    foreach ($badWords as $word) {
+        $pattern = '/\b' . str_replace('%s', $sep, $word) . '\b/i';
         if (preg_match($pattern, $text)) {
-            throw new Exception('Please keep comments appropriate and professional');
+            throw new SpClientError('Please keep comments appropriate and professional');
         }
     }
 
-    $upperCount = preg_match_all('/[A-Z]/', $text);
-    $totalLetters = preg_match_all('/[a-zA-Z]/', $text);
-    if ($totalLetters > 10 && $upperCount / $totalLetters > 0.7) {
-        throw new Exception('Please avoid excessive use of capital letters');
-    }
-
     return trim($text);
+}
+
+/**
+ * Validate and normalise free-text notes (shared by add_report and edit_report).
+ */
+function cleanNotes($notes): ?string {
+    if ($notes === null) {
+        return null;
+    }
+    $notes = filterInappropriateContent(strip_tags((string)$notes));
+    if (mb_strlen($notes) > 500) {
+        throw new SpClientError('Notes are too long (maximum 500 characters)');
+    }
+    return $notes;
 }
 
 $action = $_GET['action'] ?? null;
@@ -91,72 +115,12 @@ if (!$action) {
 }
 
 /**
- * Get the real client IP address (handles Cloudflare proxy)
- */
-function getClientIp() {
-    $ip = $_SERVER['HTTP_CF_CONNECTING_IP'] ??
-          $_SERVER['HTTP_X_FORWARDED_FOR'] ??
-          $_SERVER['REMOTE_ADDR'] ??
-          'unknown';
-
-    if (strpos($ip, ',') !== false) {
-        $ip = trim(explode(',', $ip)[0]);
-    }
-
-    return $ip;
-}
-
-/**
- * Check if an IP is on a specific list (whitelist or blacklist)
- */
-function isIpOnList($ip, $listType) {
-    $db = getDb();
-    $stmt = $db->prepare("SELECT COUNT(*) FROM ip_lists WHERE ip = :ip AND list_type = :type");
-    $stmt->execute([':ip' => $ip, ':type' => $listType]);
-    return $stmt->fetchColumn() > 0;
-}
-
-/**
  * Check if the client IP is blacklisted — call before any write action
  */
 function checkBlacklist() {
-    $ip = getClientIp();
-    if (isIpOnList($ip, 'blacklist')) {
-        throw new Exception("Access denied.");
+    if (isIpOnList(getClientIp(), 'blacklist')) {
+        throw new SpClientError('Access denied.', 403);
     }
-}
-
-/**
- * Rate limiting via SQLite (whitelist checked from ip_lists table)
- */
-function checkRateLimit($action) {
-    $ip = getClientIp();
-
-    // Whitelist IPs are exempt from rate limiting
-    if (isIpOnList($ip, 'whitelist')) {
-        return true;
-    }
-
-    $db = getDb();
-
-    // Clean old entries
-    $db->exec("DELETE FROM rate_limits WHERE requested_at < datetime('now', '-1 day')");
-
-    // Record this request
-    $stmt = $db->prepare("INSERT INTO rate_limits (ip, action, requested_at) VALUES (:ip, :action, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))");
-    $stmt->execute([':ip' => $ip, ':action' => $action]);
-
-    // Count requests in the last hour
-    $stmt = $db->prepare("SELECT COUNT(*) FROM rate_limits WHERE ip = :ip AND action = :action AND requested_at > datetime('now', '-1 hour')");
-    $stmt->execute([':ip' => $ip, ':action' => $action]);
-    $count = $stmt->fetchColumn();
-
-    $maxRequests = 10;
-    if ($count > $maxRequests) {
-        throw new Exception("Rate limit exceeded. Please try again later.");
-    }
-
-    return true;
 }
 
 try {
@@ -214,7 +178,9 @@ try {
         case 'login_password':
             // JSON login endpoint used by the login modal on the map page.
             // Handles password-only and TOTP second-factor in one action.
-            require_once __DIR__ . '/auth/Totp.php';
+            if (spLoginThrottled()) {
+                throw new SpClientError('Too many failed sign-in attempts. Please wait 15 minutes and try again.', 429);
+            }
             $username = trim($postData['username'] ?? '');
             $password = $postData['password'] ?? '';
             $totpCode = trim($postData['totp_code'] ?? '');
@@ -224,6 +190,7 @@ try {
             $loginUser = $stmt->fetch();
 
             if (!$loginUser || !password_verify($password, (string)($loginUser['password_hash'] ?? ''))) {
+                spRecordLoginFailure();
                 usleep(500_000); // slow brute-force
                 echo json_encode(['success' => false, 'error' => 'Invalid username or password.']);
                 break;
@@ -241,7 +208,8 @@ try {
                     echo json_encode(['success' => false, 'needTotp' => true]);
                     break;
                 }
-                if (!Totp::verify($loginUser['totp_secret'], $totpCode)) {
+                if (!spVerifyLoginTotp($loginUser, $totpCode)) {
+                    spRecordLoginFailure();
                     echo json_encode(['success' => false, 'error' => 'Invalid authenticator code.']);
                     break;
                 }
@@ -263,7 +231,7 @@ try {
         case 'get_reports':
             header('Cache-Control: no-cache, must-revalidate');
             $db = getDb();
-            $stmt = $db->query("SELECT * FROM reports WHERE timestamp > datetime('now', '-3 days') ORDER BY timestamp DESC");
+            $stmt = $db->query("SELECT * FROM reports WHERE timestamp > " . spIsoAgo(SP_REPORT_WINDOW) . " ORDER BY timestamp DESC");
             $reports = [];
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
                 $reports[] = rowToReport($row);
@@ -278,42 +246,59 @@ try {
             checkBlacklist();
             checkRateLimit('add_report');
 
-            if (!$postData || !isset($postData['report'])) {
-                throw new Exception('No report data provided');
+            if (!$postData || !isset($postData['report']) || !is_array($postData['report'])) {
+                throw new SpClientError('No report data provided');
             }
 
             $report = $postData['report'];
 
             if (!isset($report['road_id']) || !isset($report['road_name']) || !isset($report['status'])) {
-                throw new Exception('Missing required fields');
+                throw new SpClientError('Missing required fields');
             }
 
             // Sanitise scalar fields
             $report['road_id']   = (int)$report['road_id'];
             $report['road_name'] = mb_substr(strip_tags((string)$report['road_name']), 0, 200);
+            if (isset($report['segment'])) {
+                $report['segment'] = mb_substr((string)$report['segment'], 0, 64);
+            }
+            if (isset($report['segment_description'])) {
+                $report['segment_description'] = mb_substr(strip_tags((string)$report['segment_description']), 0, 300);
+            }
 
-            // Validate geometry: must be an array of coordinate pairs, max 2 000 points
+            // Validate geometry: must be an array of [x, y] numeric pairs, max 2 000 points
             if (isset($report['geometry'])) {
                 if (!is_array($report['geometry']) || count($report['geometry']) > 2000) {
-                    throw new Exception('Invalid geometry');
+                    throw new SpClientError('Invalid geometry');
+                }
+                foreach ($report['geometry'] as $pt) {
+                    if (!is_array($pt) || count($pt) < 2 || count($pt) > 3
+                        || !is_numeric($pt[0] ?? null) || !is_numeric($pt[1] ?? null)) {
+                        throw new SpClientError('Invalid geometry');
+                    }
                 }
             }
 
-            $validStatuses = ['clear', 'snow', 'ice-patches', 'blocked-tree', 'blocked-power',
-                             'accident', 'road-closure', 'lz'];
-            if (!in_array($report['status'], $validStatuses)) {
-                throw new Exception('Invalid status');
+            // Segment IDs are used as hash keys below — must be short scalars
+            if (isset($report['segmentIds'])) {
+                if (!is_array($report['segmentIds']) || count($report['segmentIds']) > 2000) {
+                    throw new SpClientError('Invalid segment IDs');
+                }
+                foreach ($report['segmentIds'] as $sid) {
+                    if (!is_int($sid) && !(is_string($sid) && strlen($sid) <= 64)) {
+                        throw new SpClientError('Invalid segment IDs');
+                    }
+                }
+            }
+
+            if (!in_array($report['status'], SP_REPORT_STATUSES, true)) {
+                throw new SpClientError('Invalid status');
             }
 
             $reportId = uniqid('report_', true);
 
             if (isset($report['notes'])) {
-                $report['notes'] = strip_tags($report['notes']);
-                $report['notes'] = filterInappropriateContent($report['notes']);
-
-                if (strlen($report['notes']) > 500) {
-                    throw new Exception('Notes are too long (maximum 500 characters)');
-                }
+                $report['notes'] = cleanNotes($report['notes']);
             }
 
             // Always use the server clock — never trust a client-supplied timestamp
@@ -326,37 +311,45 @@ try {
 
             $currentUser = getCurrentUser();
             $submittedBy = $currentUser['id'] ?? null;
+            $confirmed   = spRoleLevel($currentUser) >= SP_ROLE_LEVELS['first_responder'] ? 1 : 0;
 
-            $roleHierarchy = ['user' => 1, 'first_responder' => 2, 'admin' => 3];
-            $confirmed = 0;
-            if ($currentUser) {
-                $role = $currentUser['role'] ?? 'user';
-                if (($roleHierarchy[$role] ?? 0) >= 2) $confirmed = 1;
-            }
-
-            // Replace conflicting reports for this road.
+            // Find reports this one replaces.
             // Entire-road report → replaces everything on that road.
             // Segment-specific report → replaces only reports whose segment_ids overlap;
             //   entire-road reports and non-overlapping segments are left intact.
+            $replaced = [];
             if (($report['segment'] ?? '') === 'entire') {
-                $db->prepare('DELETE FROM reports WHERE road_id = ?')->execute([$report['road_id']]);
-            } elseif (!empty($report['segmentIds']) && is_array($report['segmentIds'])) {
+                $existing = $db->prepare('SELECT id, confirmed FROM reports WHERE road_id = ?');
+                $existing->execute([$report['road_id']]);
+                $replaced = $existing->fetchAll(PDO::FETCH_ASSOC);
+            } elseif (!empty($report['segmentIds'])) {
                 $existing = $db->prepare(
-                    "SELECT id, segment, segment_ids FROM reports WHERE road_id = ? AND segment != 'entire'"
+                    "SELECT id, confirmed, segment_ids FROM reports WHERE road_id = ? AND segment != 'entire'"
                 );
                 $existing->execute([$report['road_id']]);
                 $newIds = array_flip($report['segmentIds']); // use as hash for fast lookup
                 foreach ($existing->fetchAll(PDO::FETCH_ASSOC) as $row) {
                     $existingIds = $row['segment_ids'] ? json_decode($row['segment_ids'], true) : [];
                     if (!is_array($existingIds)) continue;
-                    // Delete this existing report if any of its segment_ids overlap with the new report
                     foreach ($existingIds as $sid) {
-                        if (isset($newIds[$sid])) {
-                            $db->prepare('DELETE FROM reports WHERE id = ?')->execute([$row['id']]);
+                        if ((is_int($sid) || is_string($sid)) && isset($newIds[$sid])) {
+                            $replaced[] = $row;
                             break;
                         }
                     }
                 }
+            }
+
+            // A first responder's confirmed report can only be replaced by another first responder
+            if (!$confirmed && array_filter($replaced, fn($r) => (int)$r['confirmed'] === 1)) {
+                $db->rollBack();
+                throw new SpClientError('A first responder has confirmed the current report for this road. Only a first responder can replace it.', 403);
+            }
+
+            if ($replaced) {
+                $ids = array_column($replaced, 'id');
+                $db->prepare('DELETE FROM reports WHERE id IN (' . implode(',', array_fill(0, count($ids), '?')) . ')')
+                   ->execute($ids);
             }
 
             $stmt = $db->prepare('
@@ -381,10 +374,10 @@ try {
 
             // Triggers on reports table auto-insert into report_changes
 
-            // Purge expired reports periodically
-            $db->exec("DELETE FROM reports WHERE timestamp <= datetime('now', '-3 days')");
+            // Purge reports past the admin history window (public views only show SP_REPORT_WINDOW)
+            $db->exec("DELETE FROM reports WHERE timestamp <= " . spIsoAgo(SP_REPORT_RETENTION));
             // Purge old change log entries
-            $db->exec("DELETE FROM report_changes WHERE changed_at < datetime('now', '-1 day')");
+            $db->exec("DELETE FROM report_changes WHERE changed_at < " . spIsoAgo('-1 day'));
 
             $db->commit();
 
@@ -392,6 +385,7 @@ try {
             $report['id'] = $reportId;
             $report['timestamp'] = $timestamp;
             $report['confirmed'] = $confirmed;
+            $report['submitted_by'] = $submittedBy !== null ? (int)$submittedBy : null;
 
             echo json_encode([
                 'success' => true,
@@ -406,28 +400,29 @@ try {
             break;
 
         case 'delete_report':
-            // Only authenticated users (or admin via admin.php) can delete
-            requireAuth();
+            $authUser = requireAuth();
             checkBlacklist();
 
             if (!$postData || !isset($postData['id'])) {
-                throw new Exception('No report ID provided');
+                throw new SpClientError('No report ID provided');
             }
 
             $db = getDb();
-            $db->beginTransaction();
-
-            $stmt = $db->prepare('DELETE FROM reports WHERE id = :id');
-            $stmt->execute([':id' => $postData['id']]);
-
-            if ($stmt->rowCount() === 0) {
-                $db->rollBack();
-                throw new Exception('Report not found');
+            $existing = $db->prepare("SELECT * FROM reports WHERE id = ?");
+            $existing->execute([$postData['id']]);
+            $existingReport = $existing->fetch(PDO::FETCH_ASSOC);
+            if (!$existingReport) {
+                throw new SpClientError('Report not found', 404);
+            }
+            if (!canModifyReport($authUser, $existingReport)) {
+                throw new SpClientError('Only the author or a first responder can delete this report.', 403);
             }
 
-            $db->commit();
+            $db->prepare('DELETE FROM reports WHERE id = ?')->execute([$postData['id']]);
 
             echo json_encode(['success' => true]);
+
+            publishMercureUpdate();
             break;
 
         case 'edit_report':
@@ -435,7 +430,7 @@ try {
             checkBlacklist();
 
             if (!$postData || !isset($postData['id'])) {
-                throw new Exception('No report ID provided');
+                throw new SpClientError('No report ID provided');
             }
 
             $editId = $postData['id'];
@@ -445,29 +440,27 @@ try {
             $existing->execute([$editId]);
             $existingReport = $existing->fetch(PDO::FETCH_ASSOC);
             if (!$existingReport) {
-                throw new Exception('Report not found');
+                throw new SpClientError('Report not found', 404);
+            }
+            if (!canModifyReport($authUser, $existingReport)) {
+                throw new SpClientError('Only the author or a first responder can edit this report.', 403);
             }
 
             // Validate new status if provided
-            $validStatuses = ['clear', 'snow', 'ice-patches', 'blocked-tree', 'blocked-power',
-                             'accident', 'road-closure', 'lz'];
             $newStatus = $postData['status'] ?? $existingReport['status'];
-            if (!in_array($newStatus, $validStatuses)) {
-                throw new Exception('Invalid status');
+            if (!in_array($newStatus, SP_REPORT_STATUSES, true)) {
+                throw new SpClientError('Invalid status');
             }
 
-            $newNotes = $postData['notes'] ?? $existingReport['notes'];
-            if ($newNotes !== null) {
-                $newNotes = strip_tags((string)$newNotes);
-                $newNotes = filterInappropriateContent($newNotes);
-                if (strlen($newNotes) > 500) {
-                    throw new Exception('Notes are too long (maximum 500 characters)');
-                }
-            }
+            $newNotes = cleanNotes($postData['notes'] ?? $existingReport['notes']);
+
+            // "Confirmed" reflects who last vouched for the content: a first
+            // responder's edit confirms it, anyone else's edit un-confirms it.
+            $newConfirmed = spRoleLevel($authUser) >= SP_ROLE_LEVELS['first_responder'] ? 1 : 0;
 
             $db->beginTransaction();
-            $db->prepare("UPDATE reports SET status = ?, notes = ? WHERE id = ?")
-               ->execute([$newStatus, $newNotes, $editId]);
+            $db->prepare("UPDATE reports SET status = ?, notes = ?, confirmed = ? WHERE id = ?")
+               ->execute([$newStatus, $newNotes, $newConfirmed, $editId]);
             $db->prepare("INSERT INTO report_changes (change_type, report_id) VALUES ('update', ?)")
                ->execute([$editId]);
             $db->commit();
@@ -479,39 +472,6 @@ try {
             publishMercureUpdate();
             break;
 
-        case 'get_changes':
-            // SSE uses this to get delta updates since a given change_id
-            $sinceId = isset($_GET['since']) ? (int)$_GET['since'] : 0;
-
-            $db = getDb();
-            $stmt = $db->prepare("
-                SELECT c.change_id, c.change_type, c.report_id, c.changed_at,
-                       r.id, r.road_id, r.road_name, r.segment, r.segment_description,
-                       r.geometry, r.status, r.notes, r.timestamp, r.segment_ids, r.confirmed
-                FROM report_changes c
-                LEFT JOIN reports r ON c.report_id = r.id
-                WHERE c.change_id > :since_id
-                ORDER BY c.change_id ASC
-            ");
-            $stmt->execute([':since_id' => $sinceId]);
-
-            $changes = [];
-            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                $change = [
-                    'changeId' => (int)$row['change_id'],
-                    'changeType' => $row['change_type'],
-                    'reportId' => $row['report_id'],
-                ];
-                // For 'add' changes, include the full report data
-                if ($row['change_type'] === 'add' && $row['id'] !== null) {
-                    $change['report'] = rowToReport($row);
-                }
-                $changes[] = $change;
-            }
-
-            echo json_encode(['success' => true, 'changes' => $changes]);
-            break;
-
         case 'get_roads':
             if (file_exists($cacheFile) && filesize($cacheFile) > 0) {
                 header("Cache-Control: no-cache, must-revalidate");
@@ -520,56 +480,9 @@ try {
 
                 readfile($cacheFile);
             } else {
-                throw new Exception('Road data not available. Please wait for the next data rebuild.');
+                throw new SpClientError('Road data not available. Please wait for the next data rebuild.', 503);
             }
             break;
-
-        case 'get_roads_stream':
-            $jsonlFile = $dataDir . '/roads_optimized.jsonl';
-
-            if (!file_exists($jsonlFile) || filesize($jsonlFile) == 0) {
-                throw new Exception('Road data not available. Please wait for the next data rebuild.');
-            }
-
-            while (ob_get_level() > 0) {
-                ob_end_clean();
-            }
-
-            header("Content-Type: application/x-ndjson");
-            header("Cache-Control: no-cache, must-revalidate");
-            header("Pragma: no-cache");
-            header("Expires: 0");
-            header("X-Accel-Buffering: no");
-
-            $handle = fopen($jsonlFile, 'r');
-            if ($handle) {
-                while (($line = fgets($handle)) !== false) {
-                    echo $line;
-                    flush();
-                }
-                fclose($handle);
-            }
-            exit(0);
-
-        case 'get_reports_stream':
-            // Stream reports from SQLite as NDJSON
-            while (ob_get_level() > 0) {
-                ob_end_clean();
-            }
-
-            header("Content-Type: application/x-ndjson");
-            header("Cache-Control: no-cache, must-revalidate");
-            header("Pragma: no-cache");
-            header("Expires: 0");
-            header("X-Accel-Buffering: no");
-
-            $db = getDb();
-            $stmt = $db->query("SELECT * FROM reports WHERE timestamp > datetime('now', '-3 days') ORDER BY timestamp DESC");
-            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-                echo json_encode(rowToReport($row)) . "\n";
-                flush();
-            }
-            exit(0);
 
         case 'update_fr_claim':
             $user = getCurrentUser();
@@ -619,6 +532,14 @@ try {
                 echo json_encode(['success' => false, 'error' => 'Invalid email address.']);
                 break;
             }
+            if ($email) {
+                $taken = $db->prepare('SELECT 1 FROM users WHERE email = ? AND id != ?');
+                $taken->execute([$email, $user['id']]);
+                if ($taken->fetchColumn()) {
+                    echo json_encode(['success' => false, 'error' => 'That email address is already in use.']);
+                    break;
+                }
+            }
             if ($newPassword !== '') {
                 if (strlen($newPassword) < 10) {
                     echo json_encode(['success' => false, 'error' => 'New password must be at least 10 characters.']);
@@ -627,7 +548,7 @@ try {
                 $row = $db->prepare('SELECT password_hash FROM users WHERE id = ?');
                 $row->execute([$user['id']]);
                 $u = $row->fetch(PDO::FETCH_ASSOC);
-                if (!$u || !password_verify($curPassword, $u['password_hash'])) {
+                if (!$u || !password_verify($curPassword, (string)$u['password_hash'])) {
                     echo json_encode(['success' => false, 'error' => 'Current password is incorrect.']);
                     break;
                 }
@@ -642,13 +563,21 @@ try {
             break;
 
         default:
-            throw new Exception('Invalid action');
+            throw new SpClientError('Invalid action');
     }
-} catch (Throwable $e) {
-    http_response_code(500);
+} catch (SpClientError $e) {
+    http_response_code($e->getCode() ?: 400);
     echo json_encode([
         'success' => false,
         'error' => $e->getMessage()
+    ]);
+} catch (Throwable $e) {
+    // Don't leak SQL/internal details to the client — log them instead
+    error_log('api.php [' . $action . ']: ' . $e);
+    http_response_code(500);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Server error. Please try again.'
     ]);
 }
 ?>

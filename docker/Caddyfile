@@ -27,6 +27,27 @@
 {$SERVER_NAME:localhost} {
 	root * /app/public
 
+	# The data volume lives inside the web root.  Only the road/boundary files
+	# the map fetches are public — reports.db (users, sessions, TOTP secrets),
+	# its WAL/SHM and Litestream's shadow WAL must never be served.
+	@private {
+		path /data/* /vendor/* /composer.json /composer.lock
+		not path /data/roads_optimized.json /data/roads_optimized.jsonl /data/area_boundary_geojson.json
+	}
+	handle @private {
+		respond 404
+	}
+
+	# php_server hands every *.php path to PHP, which answers 500 for files
+	# that don't exist (e.g. the removed sse.php) — 404 them here instead.
+	@missing_php {
+		path *.php
+		not file
+	}
+	handle @missing_php {
+		respond 404
+	}
+
 	# Proxy Mercure SSE subscriptions to the internal hub.
 	# flush_interval -1 ensures SSE events are streamed immediately (no buffering).
 	# Clients subscribe here via EventSource; PHP publishes to 127.0.0.1:2099.
@@ -59,7 +80,11 @@
 	}
 	header @versioned Cache-Control "public, max-age=31536000, immutable"
 
-	# Everything else: compress, serve files, process PHP
+	# Everything else: compress, serve files, process PHP.
+	# index off: there is no front controller (index.php), so a missing path
+	# must 404 instead of being rewritten to a nonexistent index.php.
 	encode zstd br gzip
-	php_server
+	php_server {
+		index off
+	}
 }

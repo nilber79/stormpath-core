@@ -204,6 +204,11 @@ if (!in_array('fr_idme_verified', \$userCols)) {
     \$db->exec('ALTER TABLE users ADD COLUMN fr_idme_verified INTEGER DEFAULT 0');
     echo \"[entrypoint] Added fr_idme_verified column to users.\\n\";
 }
+// Last accepted TOTP time step — blocks replay of a code within its window
+if (!in_array('totp_last_step', \$userCols)) {
+    \$db->exec('ALTER TABLE users ADD COLUMN totp_last_step INTEGER DEFAULT 0');
+    echo \"[entrypoint] Added totp_last_step column to users.\\n\";
+}
 // SQLite-backed sessions — persist across container restarts
 \$db->exec('
     CREATE TABLE IF NOT EXISTS sessions (
@@ -246,9 +251,9 @@ fi
 
 # Configure phpLiteAdmin with the ADMIN_PASSWORD env var and the correct DB path.
 # This runs at every container start so password changes in .env take effect on restart.
-if [ -f "/app/public/phpliteadmin.php" ]; then
+if [ -f "/app/phpliteadmin/phpliteadmin.php" ]; then
     php -r "
-\$file = '/app/public/phpliteadmin.php';
+\$file = '/app/phpliteadmin/phpliteadmin.php';
 \$content = file_get_contents(\$file);
 // pla-ng bcrypt-compares the submitted password directly against SYSTEMPASSWORD,
 // so store the plaintext ADMIN_PASSWORD (pla-ng handles its own hashing internally).

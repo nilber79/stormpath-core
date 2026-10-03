@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../db.php';
+require_once __DIR__ . '/../common.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/Totp.php';
 
@@ -10,8 +10,8 @@ if (getCurrentUser()) {
 }
 
 $redirect    = filter_var($_GET['redirect'] ?? '/', FILTER_SANITIZE_URL);
-// Only allow relative redirects
-if (!str_starts_with($redirect, '/')) {
+// Only allow same-site paths — "//evil.com" and "/\evil.com" are protocol-relative URLs to another host
+if (!str_starts_with($redirect, '/') || str_starts_with($redirect, '//') || str_starts_with($redirect, '/\\')) {
     $redirect = '/';
 }
 
@@ -26,7 +26,12 @@ $pendingUser = null;
 
 spStartSession(); // ensure session is available for TOTP handoff
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username'])) {
+$throttled = $_SERVER['REQUEST_METHOD'] === 'POST' && spLoginThrottled();
+if ($throttled) {
+    $error = 'Too many failed sign-in attempts. Please wait 15 minutes and try again.';
+}
+
+if (!$throttled && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username'])) {
     // ── Step 1: password ──────────────────────────────────────────────────
     $username = trim($_POST['username'] ?? '');
     $password = $_POST['password'] ?? '';
@@ -36,6 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username'])) {
     $user = $stmt->fetch();
 
     if (!$user || !password_verify($password, (string)($user['password_hash'] ?? ''))) {
+        spRecordLoginFailure();
         usleep(500_000); // slow brute-force
         $error = 'Invalid username or password.';
     } elseif ($user['status'] === 'pending') {
@@ -54,7 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['username'])) {
     }
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['totp_code'])) {
+if (!$throttled && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['totp_code'])) {
     // ── Step 2: TOTP ──────────────────────────────────────────────────────
     $pendingUid      = (int)($_SESSION['sp_totp_uid']      ?? 0);
     $pendingRedirect = $_SESSION['sp_totp_redirect'] ?? $redirect;
@@ -68,7 +74,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['totp_code'])) {
         if (!$user) {
             unset($_SESSION['sp_totp_uid'], $_SESSION['sp_totp_redirect']);
             $error = 'Session expired. Please sign in again.';
-        } elseif (!Totp::verify($user['totp_secret'], $totpCode)) {
+        } elseif (!spVerifyLoginTotp($user, $totpCode)) {
+            spRecordLoginFailure();
             $needTotp = true; // re-show TOTP form
             $error = 'Invalid authenticator code.';
         } else {

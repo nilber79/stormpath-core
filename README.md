@@ -309,6 +309,11 @@ for the SQLite database (`reports.db`). Use it when you need to run custom
 queries, inspect raw data, or make changes that the admin interface does not
 cover. The database is pre-selected automatically.
 
+Access requires being signed in to StormPath with the `admin` role, and then
+the `ADMIN_PASSWORD`. pla-ng itself is installed outside the web root
+(`/app/phpliteadmin/`), and the database files under `/data/` are never
+served directly.
+
 ---
 
 ## Available Area Images
@@ -331,7 +336,7 @@ GitHub Actions (nightly)
                     ┌───────────┴───────────┐
                   PHP API              Static files
            (api.php, webauthn.php,    (HTML/CSS/JS/tiles)
-            waze-feed.php, sse.php)
+            waze-feed.php)
                     │
               SQLite (reports.db)     ← volume-mounted (persists across updates)
 ```

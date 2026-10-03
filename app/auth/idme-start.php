@@ -31,7 +31,10 @@ if (!$clientId || !$clientSecret) {
 
 // The user must have just registered (session holds their pending user ID) OR
 // be logged in already and want to verify their existing FR claim.
-if (session_status() === PHP_SESSION_NONE) session_start();
+// Must be the app's own session (sp_sess, SQLite handler) — a bare
+// session_start() opens a separate PHPSESSID session that holds neither the
+// login nor register.php's sp_idme_verify_uid.
+spStartSession();
 
 $uid = 0;
 $currentUser = getCurrentUser();

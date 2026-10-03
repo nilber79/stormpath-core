@@ -18,7 +18,8 @@
     </style>
 
     <!-- MapLibre GL CSS -->
-    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
+    <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css"
+          integrity="sha384-MinO0mNliZ3vwppuPOUnGa+iq619pfMhLVUXfC4LHwSCvF9H+6P/KO4Q7qBOYV5V" crossorigin="anonymous" />
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -46,8 +47,9 @@
                 <div
                     v-if="notificationsSupported"
                     class="nav-item"
-                    @mouseenter="notificationsEnabled ? showNotificationSettings = true : null"
-                    @mouseleave="showNotificationSettings = false"
+                    @mouseenter="notificationsEnabled && hoverMenu('showNotificationSettings')"
+                    @mousemove="hoverMenuMove('showNotificationSettings')"
+                    @mouseleave="leaveMenu('showNotificationSettings')"
                 >
                     <button
                         class="nav-notification-btn"
@@ -92,8 +94,9 @@
 
                 <div
                     class="nav-item"
-                    @mouseenter="showLegendDropdown = true"
-                    @mouseleave="showLegendDropdown = false"
+                    @mouseenter="hoverMenu('showLegendDropdown')"
+                    @mousemove="hoverMenuMove('showLegendDropdown')"
+                    @mouseleave="leaveMenu('showLegendDropdown')"
                 >
                     <span class="nav-link">
                         Legend
@@ -116,8 +119,9 @@
 
                 <div
                     class="nav-item"
-                    @mouseenter="showInfoDropdown = true"
-                    @mouseleave="showInfoDropdown = false"
+                    @mouseenter="hoverMenu('showInfoDropdown')"
+                    @mousemove="hoverMenuMove('showInfoDropdown')"
+                    @mouseleave="leaveMenu('showInfoDropdown')"
                 >
                     <span class="nav-link">
                         Info
@@ -521,7 +525,7 @@
                                 <span v-else>{{ part.text }}</span>
                             </template>
                         </div>
-                        <div v-if="authUser" class="mobile-sheet-actions">
+                        <div v-if="canEditReport(mobileSheetReport)" class="mobile-sheet-actions">
                             <button class="btn btn-secondary btn-sm" @click="openEditReport(mobileSheetReport); closeMobileSheet()">Edit Report</button>
                         </div>
                     </div>
@@ -610,7 +614,7 @@
                                             <span v-else>{{ part.text }}</span>
                                         </template>
                                     </div>
-                                    <div v-if="authUser" class="report-card-actions" @click.stop>
+                                    <div v-if="canEditReport(report)" class="report-card-actions" @click.stop>
                                         <button class="report-edit-btn" @click="openEditReport(report)">Edit</button>
                                     </div>
                                 </div>
@@ -1248,15 +1252,18 @@
     <!-- MapLibre GL JS -->
 
     <!-- External Libraries -->
-    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
-    
+    <script src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"
+            integrity="sha384-SYKAG6cglRMN0RVvhNeBY0r3FYKNOJtznwA0v7B5Vp9tr31xAHsZC0DqkQ/pZDmj" crossorigin="anonymous"></script>
+
     <!-- PMTiles Protocol -->
-    <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"></script>
-    
-    <!-- Vue 3 -->
-    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://unpkg.com/pmtiles@3.2.0/dist/pmtiles.js"
+            integrity="sha384-QfbOCebHNw8pQiPAOd2IFee2v2A5VYZxBk0+JGZ5H+3mfzVIp6zsQNkTsfGJot93" crossorigin="anonymous"></script>
+
+    <!-- Vue 3 (pinned production build — bump version + integrity hash together) -->
+    <script src="https://unpkg.com/vue@3.5.43/dist/vue.global.prod.js"
+            integrity="sha384-EAm39cvdifYiZjQQxCxStLasDodQMYokBrN5XPuJ7aC/JsQ4vyEUCy/+6hXpcBOW" crossorigin="anonymous"></script>
 
     <!-- Application Script -->
-    <script src="js/app.js?v=20260317-v1"></script>
+    <script src="js/app.js?v=20261003-v5"></script>
 </body>
 </html>
