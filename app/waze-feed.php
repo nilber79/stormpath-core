@@ -11,19 +11,19 @@
  */
 
 $feedKey = getenv('WAZE_FEED_KEY');
-if ($feedKey && ($_GET['key'] ?? '') !== $feedKey) {
+if ($feedKey && !hash_equals($feedKey, (string)($_GET['key'] ?? ''))) {
     http_response_code(403);
     exit;
 }
 
-require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/common.php';
 
 $db   = getDb();
 $stmt = $db->query("
     SELECT * FROM reports
     WHERE confirmed = 1
       AND status != 'clear'
-      AND timestamp > strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-3 days')
+      AND timestamp > " . spIsoAgo(SP_REPORT_WINDOW) . "
     ORDER BY timestamp DESC
 ");
 

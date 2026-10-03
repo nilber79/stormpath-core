@@ -2,7 +2,8 @@
 # Base image containing the web application source (no county-specific data).
 # Built on FrankenPHP which embeds PHP 8.4 into Caddy, giving us:
 #   - Static file serving (HTML, CSS, JS, PMTiles)
-#   - PHP execution (api.php, sse.php) without a separate php-fpm daemon
+#   - PHP execution (api.php, auth/) without a separate php-fpm daemon
+#   - Mercure hub for real-time report push
 #   - Caddy's built-in ACME (Let's Encrypt) for automatic TLS
 #   - A single, self-contained container
 
@@ -11,6 +12,10 @@ FROM dunglas/frankenphp:php8.4
 # Install PHP extensions (pdo_sqlite for reports.db, gmp for WebAuthn CBOR arithmetic,
 # zip required by Composer to download packages during build)
 RUN install-php-extensions pdo_sqlite gmp zip
+
+# Production php.ini — without it display_errors is on and PHP warnings
+# (including file paths) are printed into responses.
+RUN cp "$PHP_INI_DIR/php.ini-production" "$PHP_INI_DIR/php.ini"
 
 # Install Litestream for SQLite replication to S3/R2.
 # Static binary — no runtime deps.  The entrypoint wraps FrankenPHP with

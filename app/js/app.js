@@ -86,6 +86,8 @@
                     frError: '', frSuccess: '', frLoading: false,
                     idmeEnabled: false,
                     lastUserInteraction: 0, // Timestamp of last map interaction
+                    pointerMoved: false,      // Real mouse movement seen since page load (arms hover menus)
+                    pendingHoverMenu: null,   // Hover menu entered before pointerMoved — opens on first real move
                     isProcessingClick: false, // Flag to prevent rapid duplicate clicks
                     customLoadingMessage: null, // Custom message for streaming progress
                     // Notification settings
@@ -202,6 +204,27 @@
             async mounted() {
                 this.loading = true; // Show loading immediately
 
+                // Browsers send a hover to whatever is under a stationary cursor when
+                // the page appears — e.g. right after clicking "← Map" in the admin
+                // panel, which sits where Info is.  Hover menus stay inert until the
+                // mouse has actually moved a few pixels.
+                // Capture phase so this runs before the menus' own handlers; the
+                // load-time hover (mouseover) supplies the starting position.
+                let pointerOrigin = null;
+                const armHoverMenus = (e) => {
+                    if (!pointerOrigin) {
+                        pointerOrigin = [e.clientX, e.clientY];
+                        return;
+                    }
+                    if (Math.abs(e.clientX - pointerOrigin[0]) + Math.abs(e.clientY - pointerOrigin[1]) > 4) {
+                        this.pointerMoved = true;
+                        document.removeEventListener('mousemove', armHoverMenus, true);
+                        document.removeEventListener('mouseover', armHoverMenus, true);
+                    }
+                };
+                document.addEventListener('mousemove', armHoverMenus, true);
+                document.addEventListener('mouseover', armHoverMenus, true);
+
                 // Load area-specific configuration before initialising the map
                 try {
                     this.areaConfig = await fetch('/area-config.json').then(r => r.json());
@@ -291,11 +314,15 @@
                     let protocol = new pmtiles.Protocol();
                     maplibregl.addProtocol("pmtiles", protocol.tile);
 
+                    // Within a browser tab, reopen the map where the user left it
+                    // (e.g. coming back from the admin panel) instead of re-locating.
+                    const savedView = this.loadSavedMapView();
+
                     // Use local self-hosted PMTiles file (baked into image, updated nightly)
                     this.map = new maplibregl.Map({
                         container: 'map',
-                        center: this.areaConfig.center,
-                        zoom: this.areaConfig.default_zoom - 1,
+                        center: savedView ? savedView.center : this.areaConfig.center,
+                        zoom: savedView ? savedView.zoom : this.areaConfig.default_zoom - 1,
                         style: {
                             version: 8,
                             sources: {
@@ -385,10 +412,34 @@
                         }
                     });
                     
-                    // Try to get user's location
-                    if (navigator.geolocation) {
+                    this.map.on('moveend', () => this.saveMapView());
+
+                    if (savedView) {
+                        // Already positioned from this tab's last view
+                        this.initializationState.mapPositioned = true;
+                        this.checkInitializationComplete();
+                    } else if (navigator.geolocation) {
+                        // Try to get user's location.
+                        // Don't let the permission prompt hold the loading screen:
+                        // the timeout option below only starts once the user answers,
+                        // and Firefox never calls back at all if the prompt is dismissed.
+                        // After this delay, continue with the default view.
+                        let positionedAt = 0;
+                        const finishPositioning = () => {
+                            if (positionedAt) return;
+                            positionedAt = Date.now();
+                            this.initializationState.mapPositioned = true;
+                            this.checkInitializationComplete();
+                        };
+                        const promptFallback = setTimeout(finishPositioning, 6000);
+
                         navigator.geolocation.getCurrentPosition(
                             (position) => {
+                                clearTimeout(promptFallback);
+                                // Location granted late and the user has already moved
+                                // the map — don't yank it away from them
+                                if (positionedAt && this.lastUserInteraction > positionedAt) return;
+
                                 const userLat = position.coords.latitude;
                                 const userLon = position.coords.longitude;
 
@@ -406,15 +457,14 @@
                                 }
 
                                 // Mark map as positioned after geolocation
-                                this.initializationState.mapPositioned = true;
-                                this.checkInitializationComplete();
+                                finishPositioning();
                             },
                             (error) => {
                                 // Location denied or unavailable, use default
                                 console.log('Location access denied or unavailable');
+                                clearTimeout(promptFallback);
                                 // Still mark as positioned (using default)
-                                this.initializationState.mapPositioned = true;
-                                this.checkInitializationComplete();
+                                finishPositioning();
                             },
                             {
                                 timeout: 5000,
@@ -2107,6 +2157,60 @@
 
                 // ─────────────────────────────────────────────────────────────────────
 
+                // Header hover menus (bell / Legend / Info).  `key` is the data flag
+                // that shows the menu.  A hover that arrives before the mouse has
+                // really moved is held and honoured on the first real move inside it.
+                hoverMenu(key) {
+                    if (this.pointerMoved) {
+                        this[key] = true;
+                        this.pendingHoverMenu = null;
+                    } else {
+                        this.pendingHoverMenu = key;
+                    }
+                },
+
+                hoverMenuMove(key) {
+                    // Only completes a held hover — doesn't reopen a menu the user
+                    // just closed by clicking an item inside it
+                    if (this.pointerMoved && this.pendingHoverMenu === key) this.hoverMenu(key);
+                },
+
+                leaveMenu(key) {
+                    this[key] = false;
+                    if (this.pendingHoverMenu === key) this.pendingHoverMenu = null;
+                },
+
+                // Map view persisted per tab in sessionStorage — a new tab/visit
+                // still starts from geolocation.
+                loadSavedMapView() {
+                    try {
+                        const v = JSON.parse(sessionStorage.getItem('sp_map_view'));
+                        if (v && Array.isArray(v.center) && v.center.length === 2
+                            && v.center.every(Number.isFinite) && Number.isFinite(v.zoom)) {
+                            return v;
+                        }
+                    } catch (e) {
+                        // Storage unavailable (private mode) or bad JSON — fall through
+                    }
+                    return null;
+                },
+
+                saveMapView() {
+                    try {
+                        const c = this.map.getCenter();
+                        sessionStorage.setItem('sp_map_view', JSON.stringify({ center: [c.lng, c.lat], zoom: this.map.getZoom() }));
+                    } catch (e) {
+                        // Storage unavailable — nothing to persist
+                    }
+                },
+
+                // Mirrors api.php canModifyReport(): the author, or any first responder / admin
+                canEditReport(report) {
+                    if (!this.authUser || !report) return false;
+                    return ['first_responder', 'admin'].includes(this.authUser.role)
+                        || (report.submitted_by != null && report.submitted_by === this.authUser.id);
+                },
+
                 openEditReport(report) {
                     this.editingReport = report;
                     this.editReport = { status: report.status, notes: report.notes || '' };
@@ -2583,7 +2687,11 @@
                     this.fetchReports();
                     this.connectMercure();
                     if (this.pollInterval) clearInterval(this.pollInterval);
-                    this.pollInterval = setInterval(() => this.fetchReports(), 30000);
+                    this.pollInterval = setInterval(() => {
+                        // Only poll while push is down — when Mercure is open every
+                        // change already triggers a fetch.
+                        if (this.mercureSource?.readyState !== EventSource.OPEN) this.fetchReports();
+                    }, 30000);
                 },
 
                 connectMercure() {
@@ -2595,17 +2703,22 @@
                         const url = new URL('/.well-known/mercure', window.location.href);
                         url.searchParams.set('topic', 'stormpath/reports');
                         this.mercureSource = new EventSource(url);
+                        let hadError = false;
                         this.mercureSource.onmessage = () => {
                             // A report changed — fetch the latest list from the API.
                             // processReportsUpdate() diffs and only re-renders changed roads.
                             this.fetchReports();
                         };
+                        this.mercureSource.onopen = () => {
+                            // Reconnected after a drop — catch up on anything missed meanwhile
+                            if (hadError) this.fetchReports();
+                            hadError = false;
+                        };
                         this.mercureSource.onerror = () => {
-                            // Hub unreachable — close and rely on the 30-second poll fallback.
-                            if (this.mercureSource) {
-                                this.mercureSource.close();
-                                this.mercureSource = null;
-                            }
+                            // EventSource retries on its own after transient errors; the
+                            // 30-second poll covers the gap.  Don't close() — that would
+                            // disable push until the page is reloaded.
+                            hadError = true;
                         };
                     } catch (e) {
                         // Silently fall back to polling

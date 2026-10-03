@@ -1,5 +1,5 @@
 <?php
-require_once __DIR__ . '/../db.php';
+require_once __DIR__ . '/../common.php';
 require_once __DIR__ . '/auth.php';
 
 // Already logged in
@@ -51,13 +51,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'Please provide your agency or department name.';
     } elseif ($fr_claim && !$fr_role) {
         $error = 'Please select your first responder role.';
+    } elseif (!isIpOnList(getClientIp(), 'whitelist') && spCountRecent('register', '-1 hour') >= 5) {
+        $error = 'Too many registrations from your network. Please try again later.';
     } else {
         $db = getDb();
         $existing = $db->prepare("SELECT id FROM users WHERE username = ?");
         $existing->execute([$username]);
+        $emailTaken = false;
+        if ($email) {
+            $emailCheck = $db->prepare("SELECT 1 FROM users WHERE email = ?");
+            $emailCheck->execute([$email]);
+            $emailTaken = (bool)$emailCheck->fetchColumn();
+        }
         if ($existing->fetch()) {
             $error = 'That username is already taken.';
+        } elseif ($emailTaken) {
+            $error = 'An account with that email address already exists.';
         } else {
+            spRecordAction('register');
             $hash = password_hash($password, PASSWORD_BCRYPT);
             $db->prepare(
                 "INSERT INTO users
@@ -79,7 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // Store the new user ID in session so the ID.me callback can
             // look it up without requiring the user to be logged in yet.
-            if (session_status() === PHP_SESSION_NONE) session_start();
+            spStartSession();
             $_SESSION['sp_idme_verify_uid'] = $newUserId;
 
             $success = true;

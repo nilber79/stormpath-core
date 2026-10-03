@@ -20,10 +20,13 @@ FROM ghcr.io/${GHCR_ORG}/stormpath-core:${CORE_TAG}
 #   wget             — download pla-ng (phpLiteAdmin fork with PHP 8 support)
 # None of these are needed at runtime.
 # pla-ng (github.com/emanueleg/pla-ng) is the PHP 8-compatible fork of phpLiteAdmin.
+# Installed outside the web root — /app/public/phpliteadmin.php is a wrapper
+# that requires an admin session before including it.
 ARG PLANG_VERSION=v2.0.4
 RUN apt-get update && apt-get install -y --no-install-recommends python3 python3-pip wget \
     && pip3 install pyyaml --break-system-packages \
-    && wget -q -O /app/public/phpliteadmin.php \
+    && mkdir -p /app/phpliteadmin \
+    && wget -q -O /app/phpliteadmin/phpliteadmin.php \
         "https://github.com/emanueleg/pla-ng/releases/download/${PLANG_VERSION}/phpliteadmin.php" \
     && rm -rf /var/lib/apt/lists/*
 

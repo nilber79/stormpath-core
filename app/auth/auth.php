@@ -8,6 +8,13 @@ require_once __DIR__ . '/../db.php';
 const SP_SESSION_NAME     = 'sp_sess';
 const SP_SESSION_LIFETIME = 86400 * 30; // 30 days
 
+const SP_ROLE_LEVELS = ['user' => 1, 'first_responder' => 2, 'admin' => 3];
+
+function spRoleLevel(?array $user): int
+{
+    return $user ? (SP_ROLE_LEVELS[$user['role'] ?? ''] ?? 0) : 0;
+}
+
 /**
  * SQLite-backed session handler so sessions survive container restarts.
  * Reads/writes the `sessions` table in reports.db (persistent volume).
@@ -51,7 +58,7 @@ function spStartSession(): void
         session_set_save_handler(new SqliteSessionHandler(), true);
         session_name(SP_SESSION_NAME);
         session_set_cookie_params([
-            'lifetime' => 0,
+            'lifetime' => SP_SESSION_LIFETIME,
             'path'     => '/',
             'secure'   => isset($_SERVER['HTTPS']),
             'httponly' => true,
@@ -66,6 +73,11 @@ function spStartSession(): void
  */
 function getCurrentUser(): ?array
 {
+    // No cookie and no session yet → anonymous.  Don't start one, or every
+    // anonymous visitor (and bot) gets a sessions row and a Set-Cookie.
+    if (session_status() !== PHP_SESSION_ACTIVE && empty($_COOKIE[SP_SESSION_NAME])) {
+        return null;
+    }
     spStartSession();
     $userId = $_SESSION['sp_user_id'] ?? null;
     if (!$userId) {
@@ -99,10 +111,7 @@ function requireAuth(): array
 function requireRole(string $role): array
 {
     $user = requireAuth();
-    $hierarchy = ['user' => 1, 'first_responder' => 2, 'admin' => 3];
-    $required  = $hierarchy[$role] ?? 0;
-    $current   = $hierarchy[$user['role']] ?? 0;
-    if ($current < $required) {
+    if (spRoleLevel($user) < (SP_ROLE_LEVELS[$role] ?? PHP_INT_MAX)) {
         spSendUnauth('Insufficient permissions', 403);
     }
     return $user;
@@ -115,7 +124,8 @@ function spSendUnauth(string $message, int $code = 401): never
 {
     $isJson = isset($_SERVER['HTTP_X_REQUESTED_WITH']) ||
               (isset($_SERVER['HTTP_ACCEPT']) && str_contains($_SERVER['HTTP_ACCEPT'], 'application/json')) ||
-              (isset($_SERVER['HTTP_CONTENT_TYPE']) && str_contains($_SERVER['HTTP_CONTENT_TYPE'], 'json'));
+              str_contains($_SERVER['CONTENT_TYPE'] ?? '', 'json') ||
+              str_ends_with(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '', '/api.php');
 
     if ($isJson) {
         header('Content-Type: application/json');
@@ -159,5 +169,21 @@ function destroySession(): void
  */
 function cleanupExpiredChallenges(): void
 {
-    getDb()->exec("DELETE FROM webauthn_challenges WHERE created_at < datetime('now', '-5 minutes')");
+    getDb()->exec("DELETE FROM webauthn_challenges WHERE created_at < strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-5 minutes')");
+}
+
+/**
+ * Check a TOTP code for a login.  Each code is accepted once: the matched
+ * time step is stored and codes from that step or earlier are refused, so an
+ * observed code can't be replayed within its validity window.
+ */
+function spVerifyLoginTotp(array $user, string $code): bool
+{
+    require_once __DIR__ . '/Totp.php';
+    $step = Totp::matchStep((string)$user['totp_secret'], $code);
+    if ($step === null || $step <= (int)($user['totp_last_step'] ?? 0)) {
+        return false;
+    }
+    getDb()->prepare('UPDATE users SET totp_last_step = ? WHERE id = ?')->execute([$step, $user['id']]);
+    return true;
 }

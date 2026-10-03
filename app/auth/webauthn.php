@@ -44,13 +44,6 @@ use Webauthn\PublicKeyCredentialSource;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function getOrigin(): string
-{
-    $scheme = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
-    $host   = $_SERVER['HTTP_HOST'] ?? 'localhost';
-    return $scheme . '://' . $host;
-}
-
 function getRpId(): string
 {
     $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
@@ -172,7 +165,7 @@ try {
             $user        = requireAuth();
             $challengeId = $postData['challengeId'] ?? '';
             $credJson    = $postData['credential']  ?? null;
-            $passkeyName = trim($postData['name']   ?? 'Passkey');
+            $passkeyName = mb_substr(trim((string)($postData['name'] ?? '')), 0, 60) ?: 'Passkey';
 
             if (!$challengeId || !$credJson) {
                 throw new RuntimeException('Missing challengeId or credential');
@@ -287,7 +280,6 @@ try {
             // Look up the credential in the database
             $rawCredId = base64_encode($credential->rawId);
             $db        = getDb();
-            $pkRow     = $db->prepare("SELECT * FROM passkeys WHERE credential_id = ?")->execute([$rawCredId]);
             $pkRow     = $db->prepare("SELECT * FROM passkeys WHERE credential_id = ?");
             $pkRow->execute([$rawCredId]);
             $passkeyRow = $pkRow->fetch();

@@ -61,6 +61,27 @@ if ($action === 'set_role') {
     exit;
 }
 
+// First-responder claim review.  Granting the role is what marks a claim as
+// reviewed; dismissing clears the claim (the user can submit a new one from
+// their account settings, which flags it for review again).
+if ($action === 'grant_fr') {
+    $id = (int)($_POST['user_id'] ?? 0);
+    if ($id && $id !== (int)$currentUser['id']) {
+        $db->prepare("UPDATE users SET role = 'first_responder' WHERE id = ? AND role = 'user'")->execute([$id]);
+    }
+    header('Location: admin-users.php');
+    exit;
+}
+
+if ($action === 'dismiss_fr') {
+    $id = (int)($_POST['user_id'] ?? 0);
+    if ($id && $id !== (int)$currentUser['id']) {
+        $db->prepare("UPDATE users SET fr_claim = 0 WHERE id = ?")->execute([$id]);
+    }
+    header('Location: admin-users.php');
+    exit;
+}
+
 if ($action === 'delete') {
     $id = (int)($_POST['user_id'] ?? 0);
     if ($id && $id !== (int)$currentUser['id']) {
@@ -190,6 +211,9 @@ $frRoleLabels = [
         .badge-fr       { background: #dbeafe; color: #1e40af; }
         .badge-idme     { background: #d1fae5; color: #065f46; }
         .badge-unverified { background: #fef3c7; color: #92400e; }
+        .fr-review { display: inline-flex; gap: 0.25rem; margin-left: 0.25rem; vertical-align: middle; }
+        .fr-review form { display: inline; }
+        .fr-review .btn-sm { padding: 0.1rem 0.5rem; font-size: 0.75rem; }
         .self-tag { font-size: 0.75rem; background: #e0ddd5; color: #6b6660; padding: 0.125rem 0.5rem; border-radius: 4px; }
 
         /* FR claim detail block */
@@ -268,13 +292,29 @@ $frRoleLabels = [
 
     <?php
     // Helper: render FR claim badges + detail for a user row
-    function renderFrInfo(array $u): string {
+    function renderFrInfo(array $u, bool $isSelf): string {
         if (!$u['fr_claim']) return '';
         $out = '';
         if ($u['fr_idme_verified']) {
             $out .= '<span class="badge badge-idme">✓ ID.me Verified</span> ';
+        } elseif (in_array($u['role'], ['first_responder', 'admin'], true)) {
+            // An admin already granted the role — the claim has been reviewed
+            $out .= '<span class="badge badge-idme">✓ Approved</span> ';
         } else {
-            $out .= '<span class="badge badge-unverified">⚠ Needs Review</span> ';
+            $out .= '<span class="badge badge-unverified">⚠ Needs Review</span>';
+            if (!$isSelf) {
+                $uid  = (int)$u['id'];
+                $out .= '<span class="fr-review">'
+                      . '<form method="post"><input type="hidden" name="action" value="grant_fr">'
+                      . '<input type="hidden" name="user_id" value="' . $uid . '">'
+                      . '<button type="submit" class="btn-sm btn-approve" title="Set role to First Responder">Grant FR</button></form>'
+                      . '<form method="post" onsubmit="return confirm(\'Dismiss this first-responder claim?\')">'
+                      . '<input type="hidden" name="action" value="dismiss_fr">'
+                      . '<input type="hidden" name="user_id" value="' . $uid . '">'
+                      . '<button type="submit" class="btn-sm btn-deactivate">Dismiss</button></form>'
+                      . '</span>';
+            }
+            $out .= ' ';
         }
         $out .= '<span class="badge badge-fr">' . h($GLOBALS['frRoleLabels'][$u['fr_role'] ?? ''] ?? 'First Responder') . '</span>';
         $detail = [];
@@ -287,9 +327,13 @@ $frRoleLabels = [
     }
     ?>
 
-    <!-- Bulk approve form wraps both table and cards -->
+    <!-- Bulk approve form.  Kept empty: the per-row action forms can't nest
+         inside it (browsers drop nested <form> tags, which merged the first
+         row's action/user_id into this form), so the checkboxes and button
+         join it via the form="bulk-form" attribute instead. -->
     <form method="post" id="bulk-form">
         <input type="hidden" name="action" value="bulk_approve">
+    </form>
 
         <!-- Bulk action bar (shown only when pending users exist) -->
         <?php if (count($pending) > 0): ?>
@@ -298,7 +342,7 @@ $frRoleLabels = [
                 <input type="checkbox" id="select-all-pending">
                 Select all pending
             </label>
-            <button type="submit" class="btn-sm btn-bulk">✓ Approve Selected</button>
+            <button type="submit" form="bulk-form" class="btn-sm btn-bulk">✓ Approve Selected</button>
         </div>
         <?php endif; ?>
 
@@ -323,7 +367,7 @@ $frRoleLabels = [
                             <?php if (count($pending) > 0): ?>
                             <td>
                                 <?php if ($u['status'] === 'pending' && !$isSelf): ?>
-                                    <input type="checkbox" name="user_ids[]" value="<?= (int)$u['id'] ?>" class="pending-cb">
+                                    <input type="checkbox" form="bulk-form" name="user_ids[]" value="<?= (int)$u['id'] ?>" class="pending-cb">
                                 <?php endif; ?>
                             </td>
                             <?php endif; ?>
@@ -337,7 +381,7 @@ $frRoleLabels = [
                                     <div style="font-size:0.75rem;color:#9ca3af"><?= h($u['email']) ?></div>
                                 <?php endif; ?>
                                 <?php if ($u['fr_claim']): ?>
-                                    <div style="margin-top:0.3rem"><?= renderFrInfo($u) ?></div>
+                                    <div style="margin-top:0.3rem"><?= renderFrInfo($u, $isSelf) ?></div>
                                 <?php endif; ?>
                             </td>
                             <td>
@@ -422,7 +466,7 @@ $frRoleLabels = [
                             </div>
                         </div>
                         <?php if ($u['status'] === 'pending' && !$isSelf && count($pending) > 0): ?>
-                            <input type="checkbox" name="user_ids[]" value="<?= (int)$u['id'] ?>" class="pending-cb" style="margin-top:0.25rem;width:1.1rem;height:1.1rem;accent-color:#d97706">
+                            <input type="checkbox" form="bulk-form" name="user_ids[]" value="<?= (int)$u['id'] ?>" class="pending-cb" style="margin-top:0.25rem;width:1.1rem;height:1.1rem;accent-color:#d97706">
                         <?php endif; ?>
                     </div>
 
@@ -444,7 +488,7 @@ $frRoleLabels = [
                     </div>
 
                     <?php if ($u['fr_claim']): ?>
-                        <div style="margin-bottom:0.75rem"><?= renderFrInfo($u) ?></div>
+                        <div style="margin-bottom:0.75rem"><?= renderFrInfo($u, $isSelf) ?></div>
                     <?php endif; ?>
 
                     <?php if (!$isSelf): ?>
@@ -487,7 +531,6 @@ $frRoleLabels = [
             <?php endforeach; ?>
         </div>
 
-    </form><!-- end bulk-form -->
 
     <?php endif; ?>
 
