@@ -17,6 +17,24 @@ jobs:
   # Re-use the same discovery + area build logic as build.yml
   # The core image is NOT rebuilt nightly (no app code changes expected).
 
+  # GitHub disables scheduled workflows after 60 days without repo activity.
+  # Re-enabling via the API resets that timer (same approach as
+  # gautamkrishnar/keepalive-workflow's API mode). dep-check.yml does the same.
+  keepalive:
+    name: Keep scheduled workflows enabled
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Re-enable scheduled workflows
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for wf in nightly.yml dep-check.yml; do
+            gh api -X PUT "repos/${{ github.repository }}/actions/workflows/$wf/enable"
+            echo "Enabled $wf"
+          done
+
   discover:
     name: Discover areas
     runs-on: ubuntu-latest
