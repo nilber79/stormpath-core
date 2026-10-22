@@ -14,6 +14,9 @@
 :2099 {
 	bind 127.0.0.1
 	mercure {
+		# Mercure 1.0 (FrankenPHP 1.13+) only accepts publisher_jwt/subscriber_jwt
+		# in compatibility mode. Modern mode needs issuer blocks + iss/aud/exp tokens.
+		protocol_version_compatibility 8
 		publisher_jwt {$MERCURE_JWT_SECRET} HS256
 		subscriber_jwt {$MERCURE_JWT_SECRET} HS256
 		anonymous
