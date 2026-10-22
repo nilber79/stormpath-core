@@ -40,6 +40,7 @@ jobs:
           context: .
           file: docker/Dockerfile.core
           push: ${{ github.event_name != 'pull_request' }}
+          pull: true
           tags: ghcr.io/${{ github.repository_owner }}/stormpath-core:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -172,6 +173,7 @@ jobs:
           context: .
           file: docker/Dockerfile.core
           push: true
+          pull: true
           tags: localhost:5000/stormpath-core:pr
           cache-from: type=gha
 
@@ -186,6 +188,7 @@ jobs:
           context: .
           file: docker/Dockerfile.area
           push: ${{ github.event_name != 'pull_request' }}
+          pull: true
           build-args: |
             AREA=${{ matrix.area }}
             GHCR_ORG=${{ github.repository_owner }}

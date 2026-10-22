@@ -15,7 +15,9 @@ on:
 
 jobs:
   # Re-use the same discovery + area build logic as build.yml
-  # The core image is NOT rebuilt nightly (no app code changes expected).
+  # The core image IS rebuilt nightly (pull: true) so base-image security
+  # patches (frankenphp/PHP) reach the area images within a day. When the base
+  # is unchanged every layer is a GHA cache hit, so this is cheap.
 
   # GitHub disables scheduled workflows after 60 days without repo activity.
   # Re-enabling via the API resets that timer (same approach as
@@ -58,9 +60,36 @@ jobs:
           fi
           echo "matrix={\"area\":$slugs}" >> $GITHUB_OUTPUT
 
+  core:
+    name: Rebuild core image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile.core
+          push: true
+          pull: true
+          tags: ghcr.io/${{ github.repository_owner }}/stormpath-core:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   area:
     name: Refresh ${{ matrix.area }}
-    needs: discover
+    needs: [discover, core]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -151,6 +180,7 @@ jobs:
           context: .
           file: docker/Dockerfile.area
           push: true
+          pull: true
           build-args: |
             AREA=${{ matrix.area }}
             GHCR_ORG=${{ github.repository_owner }}
